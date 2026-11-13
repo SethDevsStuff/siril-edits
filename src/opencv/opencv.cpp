@@ -493,6 +493,17 @@ static void cvPrepareH(Mat &H, double scale, int source_rx, int source_ry, int t
 		S.at<double>(1,2) -= 0.5 * (1 - scale);
 		H = S * H;
 	}
+
+	/* modify matrix for reverse Y axis */
+	Mat F1 = Mat::eye(3, 3, CV_64FC1);
+	F1.at<double>(1,1) = -1.0;
+	F1.at<double>(1,2) = source_ry - 1.0;
+
+	Mat F2 = Mat::eye(3, 3, CV_64FC1);
+	F2.at<double>(1,1) = -1.0;
+	F2.at<double>(1,2) = target_ry - 1.0;
+
+	H = F2.inv() * H * F1;
 }
 
 void cvPrepareDrizzleH(Homography *Hom, double scale, int source_rx, int source_ry, int target_rx, int target_ry) {
