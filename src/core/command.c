@@ -4983,7 +4983,10 @@ static gpointer merge_thread_worker(gpointer p) {
 
 	if (!retval) {
 		write_merged_sequence_metadata(destroot_norm, data->seqs, data->nb_seq, data->type, total);
-		siril_add_idle(merge_complete_idle, g_strdup(destroot_norm));
+		char *mdup = g_strdup(destroot_norm);
+		if (!siril_add_idle(merge_complete_idle, mdup)) {
+			g_free(mdup);
+		}
 		siril_log_message(_("Merged %d sequences (%d total frames) successfully into '%s'.\n"), data->nb_seq, total, destroot_norm);
 	}
 
