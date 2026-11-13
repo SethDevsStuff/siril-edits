@@ -47,8 +47,8 @@ static float evaluateNoiseOfCalibratedImage(fits *fit, fits *dark,
 	fits dark_tmp = { 0 }, fit_tmp = { 0 };
 	rectangle area = { 0 };
 
-	/* square of 512x512 in the center of the image */
-	int size = SQUARE_SIZE;
+	/* square of up to 512x512 in the center of the image */
+	int size = min(SQUARE_SIZE, min(fit->rx, fit->ry));
 	area.x = (fit->rx - size) / 2;
 	area.y = (fit->ry - size) / 2;
 	area.w = size;

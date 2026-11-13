@@ -23,6 +23,32 @@
             <property name="orientation">vertical</property>
             <property name="spacing">10</property>
             <child>
+              <object class="GtkBox" id="box_multisession_calib">
+                <property name="orientation">horizontal</property>
+                <property name="spacing">6</property>
+                <property name="margin-top">2</property>
+                <property name="margin-bottom">2</property>
+                <child>
+                  <object class="GtkLabel">
+                    <property name="halign">start</property>
+                    <property name="hexpand">1</property>
+                    <property name="label" translatable="yes">Multi-Session:</property>
+                    <attributes>
+                      <attribute name="weight" value="bold"/>
+                    </attributes>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="btn_multisession_calib">
+                    <property name="focusable">1</property>
+                    <property name="label" translatable="yes">Multi-Session Calibration...</property>
+                    <property name="tooltip-text" translatable="yes">Load and organize multi-session data: assign light frames to subsessions with dedicated calibration frames (dark, flat, bias).</property>
+                    <signal name="clicked" handler="on_btn_multisession_calib_clicked"/>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
               <object class="GtkExpander">
                 <property name="expanded">1</property>
                 <property name="focusable">1</property>

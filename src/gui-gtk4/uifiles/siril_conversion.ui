@@ -57,6 +57,14 @@
                                 <signal name="clicked" handler="on_clear_convert_button_clicked"/>
                               </object>
                             </child>
+                            <child>
+                              <object class="GtkButton" id="btn_multisession_conv">
+                                <property name="label" translatable="yes">Multi-Session...</property>
+                                <property name="tooltip-text" translatable="yes">Load and calibrate multi-session data with different calibration frames</property>
+                                <property name="valign">center</property>
+                                <signal name="clicked" handler="on_btn_multisession_calib_clicked"/>
+                              </object>
+                            </child>
                           </object>
                         </child>
                         <child>

@@ -303,7 +303,6 @@ interpolate_four_points(struct driz_param_t *par, int ixcen, int iycen,
 
 int map_image_coordinates_h(fits *fit, Homography H, imgmap_t *p, int target_rx, int target_ry, float scale, disto_data *disto, int threads) {
 	int source_rx, source_ry;
-	int index = 0;
 	source_rx = fit->rx;
 	source_ry = fit->ry;
 	/* Doing the calculations manually rather than using
@@ -334,11 +333,12 @@ int map_image_coordinates_h(fits *fit, Homography H, imgmap_t *p, int target_rx,
 		}
 		for (int y = 0; y < source_ry; y++) {
 			for (int x = 0; x < source_rx; x++) {
-				float x0 = p->xmap[index];
-				float y0 = p->ymap[index];
+				size_t idx = (size_t)y * source_rx + x;
+				float x0 = p->xmap[idx];
+				float y0 = p->ymap[idx];
 				float z = 1. / (x0 * Harr[6] + y0 * Harr[7] + Harr[8]);
-				p->xmap[index] = (x0 * Harr[0] + y0 * Harr[1] + Harr[2]) * z;
-				p->ymap[index++] = (x0 * Harr[3] + y0 * Harr[4] + Harr[5]) * z;
+				p->xmap[idx] = (x0 * Harr[0] + y0 * Harr[1] + Harr[2]) * z;
+				p->ymap[idx] = (x0 * Harr[3] + y0 * Harr[4] + Harr[5]) * z;
 			}
 		}
 		return 0;
@@ -352,10 +352,11 @@ int map_image_coordinates_h(fits *fit, Homography H, imgmap_t *p, int target_rx,
 		float y2 = y0 * Harr[1] + Harr[2];
 		float y3 = y0 * Harr[4] + Harr[5];
 		for (int x = 0; x < source_rx; x++) {
+			size_t idx = (size_t)y * source_rx + x;
 			float x0 = (float) x;
 			float z = 1. / (x0 * Harr[6] + y1);
-			p->xmap[index] = (x0 * Harr[0] + y2) * z;
-			p->ymap[index++] = (x0 * Harr[3] + y3) * z;
+			p->xmap[idx] = (x0 * Harr[0] + y2) * z;
+			p->ymap[idx] = (x0 * Harr[3] + y3) * z;
 		}
 	}
 	return 0;
