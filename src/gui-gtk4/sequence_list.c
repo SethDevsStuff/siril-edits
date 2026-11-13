@@ -1239,6 +1239,7 @@ void update_icons_sequence_list(gboolean is_dark) {
 
 #ifdef _WIN32
 static int ListSequences(const gchar *sDir, const char *sequence_name_to_select,
+		const char *alt_sequence_name,
 		GtkDropDown *seqcombo, int *index_of_seq_to_load, gboolean *found) {
 	WIN32_FIND_DATAW fdFile;
 	HANDLE hFind = NULL;
@@ -1273,9 +1274,12 @@ static int ListSequences(const gchar *sDir, const char *sequence_name_to_select,
 				strncpy(filename, cFileName, 255);
 				free_sequence(seq, TRUE);
 				siril_drop_down_append_text(seqcombo, filename);
-				if (sequence_name_to_select
+				if ((sequence_name_to_select
 						&& !strncmp(filename, sequence_name_to_select,
-							strlen(filename))) {
+							strlen(filename))) ||
+				    (alt_sequence_name && !*found
+						&& !strncmp(filename, alt_sequence_name,
+							strlen(filename)))) {
 					*index_of_seq_to_load = number_of_loaded_sequences;
 					*found = TRUE;
 				}
@@ -1303,6 +1307,7 @@ int update_sequences_list(const char *sequence_name_to_select) {
 	int number_of_loaded_sequences = 0;
 	int index_of_seq_to_load = -1;
 	char *seqname = NULL;
+	char *alt_seqname = NULL;
 	gboolean found = FALSE;
 
 	// clear the previous list
@@ -1321,16 +1326,34 @@ int update_sequences_list(const char *sequence_name_to_select) {
 	siril_drop_down_append_text(seqcombo, siril_seqlist_none_text());
 
 	if (sequence_name_to_select) {
-		if (g_str_has_suffix(sequence_name_to_select, ".seq"))
+		if (g_str_has_suffix(sequence_name_to_select, ".seq")) {
 			seqname = strdup(sequence_name_to_select);
-		else {
-			seqname = malloc(strlen(sequence_name_to_select) + 5);
-			sprintf(seqname, "%s.seq", sequence_name_to_select);
+			if (g_str_has_suffix(sequence_name_to_select, "_.seq")) {
+				size_t len = strlen(sequence_name_to_select);
+				alt_seqname = malloc(len);
+				strncpy(alt_seqname, sequence_name_to_select, len - 5);
+				strcpy(alt_seqname + len - 5, ".seq");
+			} else {
+				size_t len = strlen(sequence_name_to_select);
+				alt_seqname = malloc(len + 2);
+				strncpy(alt_seqname, sequence_name_to_select, len - 4);
+				strcpy(alt_seqname + len - 4, "_.seq");
+			}
+		} else {
+			seqname = g_strdup_printf("%s.seq", sequence_name_to_select);
+			if (g_str_has_suffix(sequence_name_to_select, "_")) {
+				size_t len = strlen(sequence_name_to_select);
+				char *base = g_strndup(sequence_name_to_select, len - 1);
+				alt_seqname = g_strdup_printf("%s.seq", base);
+				g_free(base);
+			} else {
+				alt_seqname = g_strdup_printf("%s_.seq", sequence_name_to_select);
+			}
 		}
 	}
 
 #ifdef _WIN32
-	number_of_loaded_sequences = ListSequences(com.wd, seqname, seqcombo, &index_of_seq_to_load, &found);
+	number_of_loaded_sequences = ListSequences(com.wd, seqname, alt_seqname, seqcombo, &index_of_seq_to_load, &found);
 #else
 	struct dirent **list = NULL;
 	int i, n;
@@ -1349,7 +1372,7 @@ int update_sequences_list(const char *sequence_name_to_select) {
 				free_sequence(seq, TRUE);
 				char *filename = list[i]->d_name;
 				siril_drop_down_append_text(seqcombo, filename);
-				if (seqname && !strcmp(filename, seqname)) {
+				if (seqname && (!strcmp(filename, seqname) || (!found && alt_seqname && !strcmp(filename, alt_seqname)))) {
 					index_of_seq_to_load = number_of_loaded_sequences;
 					found = TRUE;
 				}
@@ -1386,16 +1409,20 @@ int update_sequences_list(const char *sequence_name_to_select) {
 		fprintf(stderr, "No valid sequence found in CWD.\n");
 		g_signal_handlers_unblock_by_func(seqcombo, on_seqproc_entry_changed, NULL);
 		if (seqname) free(seqname);
+		if (alt_seqname) free(alt_seqname);
 		return -1;
 	} else if (!seqname || found) {
 		fprintf(stdout, "Loaded %d %s\n", number_of_loaded_sequences,
 				ngettext("sequence", "sequences", number_of_loaded_sequences));
 	} else {
 		g_signal_handlers_unblock_by_func(seqcombo, on_seqproc_entry_changed, NULL);
+		if (seqname) free(seqname);
+		if (alt_seqname) free(alt_seqname);
 		return -1;
 	}
 
 	if (seqname) free(seqname);
+	if (alt_seqname) free(alt_seqname);
 
 	/* The "changed" handler is still blocked and the drop-down still carries the
 	 * item it auto-selected during population. Changing the selection here will

@@ -26,6 +26,7 @@
 
 #include "core/command_line_processor.h"
 #include "core/gui_iface.h"
+#include "core/processing.h"
 #include "core/proto.h"
 #include "core/siril.h"
 #include "core/siril_log.h"
@@ -779,6 +780,33 @@ static int create_subsession_sequence_file(const char *seqname, GList *files) {
 	return 0;
 }
 
+struct multisession_run_data {
+	GInputStream *stream;
+	char *seq_to_select;
+};
+
+static gboolean multisession_select_seq_idle(gpointer user_data) {
+	char *seq_to_select = (char *)user_data;
+	if (seq_to_select && seq_to_select[0] != '\0') {
+		gui_iface.update_sequences_list(seq_to_select);
+		gui_iface.switch_to_tab(IMAGE_SEQ);
+	}
+	g_free(seq_to_select);
+	return G_SOURCE_REMOVE;
+}
+
+static gpointer multisession_script_worker(gpointer user_data) {
+	struct multisession_run_data *data = (struct multisession_run_data *)user_data;
+	gpointer res = execute_script(data->stream);
+	int retval = GPOINTER_TO_INT(res);
+	if (!retval && data->seq_to_select) {
+		g_idle_add(multisession_select_seq_idle, g_strdup(data->seq_to_select));
+	}
+	g_free(data->seq_to_select);
+	free(data);
+	return res;
+}
+
 static void on_btn_run_multisession_calib_clicked(GtkButton *btn, gpointer user_data) {
 	struct multisession_calib_ui *ui = (struct multisession_calib_ui *)user_data;
 	save_current_subsession_fields(ui);
@@ -793,6 +821,8 @@ static void on_btn_run_multisession_calib_clicked(GtkButton *btn, gpointer user_
 				_("Another process is currently running. Please wait for it to finish."));
 		return;
 	}
+	if (get_script_thread_run())
+		wait_for_script_thread();
 
 	// Check active subsessions
 	int active_sub_count = 0;
@@ -917,14 +947,21 @@ static void on_btn_run_multisession_calib_clicked(GtkButton *btn, gpointer user_
 		g_free(seq_raw_name);
 	}
 
+	gchar *trimmed_outname = g_strstrip(g_strdup(outname));
+	char *seq_to_select = NULL;
+
 	// Merge command
 	if (auto_merge && g_list_length(calibrated_seq_names) >= 2) {
 		g_string_append(script, "merge");
 		for (GList *cl = calibrated_seq_names; cl != NULL; cl = cl->next) {
 			g_string_append_printf(script, " %s", (char *)cl->data);
 		}
-		g_string_append_printf(script, " \"%s\"\n", outname);
+		g_string_append_printf(script, " \"%s\"\n", trimmed_outname);
+		seq_to_select = normalize_seqname(trimmed_outname, TRUE);
+	} else if (g_list_length(calibrated_seq_names) == 1) {
+		seq_to_select = g_strdup((char *)calibrated_seq_names->data);
 	}
+	g_free(trimmed_outname);
 	g_list_free_full(calibrated_seq_names, g_free);
 
 	multisession_dialog_close(ui);
@@ -934,8 +971,12 @@ static void on_btn_run_multisession_calib_clicked(GtkButton *btn, gpointer user_
 	gchar *script_data = g_string_free(script, FALSE);
 	GInputStream *input_stream = g_memory_input_stream_new_from_data(script_data, script_len, g_free);
 
+	struct multisession_run_data *rdata = calloc(1, sizeof(struct multisession_run_data));
+	rdata->stream = input_stream;
+	rdata->seq_to_select = seq_to_select;
+
 	gui_iface.show_panel("output_logs", TRUE);
-	com.script_thread = g_thread_new("script", execute_script, input_stream);
+	com.script_thread = g_thread_new("script", multisession_script_worker, rdata);
 }
 
 static void multisession_dialog_close(struct multisession_calib_ui *ui) {
