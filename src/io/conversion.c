@@ -570,7 +570,7 @@ static seqwrite_status open_next_output_seq(const struct _convert_data *args, co
 static seqread_status get_next_read_details(convert_status *conv, struct reader_data *reader);
 static seqwrite_status get_next_write_details(struct _convert_data *args, convert_status *conv,
 		struct writer_data *writer, gboolean end_of_input_seq, gboolean last_file_and_image);
-static gchar *create_sequence_filename(sequence_type output_type, const char *destroot, int index);
+gchar *create_sequence_filename(sequence_type output_type, const char *destroot, int index);
 static seqwrite_status write_image(fits *fit, struct writer_data *writer);
 static void compute_nb_images_fit_mem(fits *fit, gboolean debayer, int *nb_threads, int *nb_images);
 static void print_reader(struct reader_data *reader);
@@ -1390,7 +1390,7 @@ static seqread_status open_next_input_sequence(const char *src_filename, convert
 	return OPEN_NOT_A_SEQ;
 }
 
-static gchar *create_sequence_filename(sequence_type output_type, const char *destroot, int index) {
+gchar *create_sequence_filename(sequence_type output_type, const char *destroot, int index) {
 	char *destroot_noext = remove_ext_from_filename(destroot);
 	char dest_end = destroot_noext[strlen(destroot_noext)-1];
 	gchar *output = NULL;

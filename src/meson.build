@@ -352,6 +352,7 @@ gui_filenames = [
   'user_polygons.c',
   'pixelmath.c',
   'preprocess.c',
+  'multisession.c',
   'sequence_export.c',
   'siril_actions.c',
   'siril_cmd_help.c',

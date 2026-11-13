@@ -20,6 +20,7 @@
 
 #include <stdlib.h>
 
+#include "core/command_line_processor.h"
 #include "core/siril.h"
 #include "core/siril_log.h"
 #include "gui-gtk4/message_dialog.h"
@@ -883,4 +884,157 @@ void update_stack_interface(gboolean dont_change_stack_type) {
 	} else {
 		gtk_widget_set_sensitive(go_stack, FALSE);
 	}
+}
+
+/* Multi-session merge dialog */
+struct multisession_dialog_data {
+	GtkWidget *dialog;
+	GtkWidget *entry_name;
+	GList *checkbuttons;
+};
+
+static void on_multisession_merge_apply(GtkButton *btn, gpointer user_data) {
+	struct multisession_dialog_data *mdd = (struct multisession_dialog_data *)user_data;
+	GString *cmd = g_string_new("merge");
+	int checked_count = 0;
+
+	for (GList *l = mdd->checkbuttons; l != NULL; l = l->next) {
+		GtkCheckButton *cb = GTK_CHECK_BUTTON(l->data);
+		if (siril_toggle_get_active(GTK_WIDGET(cb))) {
+			const char *seqname = (const char *)g_object_get_data(G_OBJECT(cb), "seqname");
+			if (seqname) {
+				g_string_append_printf(cmd, " \"%s\"", seqname);
+				checked_count++;
+			}
+		}
+	}
+
+	if (checked_count < 2) {
+		siril_message_dialog(GTK_MESSAGE_WARNING, _("Multi-Session Merge"),
+				_("Please select at least two sequences to merge."));
+		g_string_free(cmd, TRUE);
+		return;
+	}
+
+	const char *outname = gtk_editable_get_text(GTK_EDITABLE(mdd->entry_name));
+	if (!outname || outname[0] == '\0') {
+		siril_message_dialog(GTK_MESSAGE_WARNING, _("Multi-Session Merge"),
+				_("Please specify an output sequence name."));
+		g_string_free(cmd, TRUE);
+		return;
+	}
+
+	g_string_append_printf(cmd, " \"%s\"", outname);
+
+	processcommand(cmd->str, FALSE);
+	g_string_free(cmd, TRUE);
+
+	gtk_window_destroy(GTK_WINDOW(mdd->dialog));
+}
+
+static void on_multisession_dialog_destroy(GtkWidget *widget, gpointer user_data) {
+	struct multisession_dialog_data *mdd = (struct multisession_dialog_data *)user_data;
+	g_list_free(mdd->checkbuttons);
+	free(mdd);
+}
+
+void on_btn_multisession_clicked(GtkButton *button, gpointer user_data) {
+	if (!com.wd) {
+		siril_message_dialog(GTK_MESSAGE_ERROR, _("Multi-Session Merge"),
+				_("No working directory is set."));
+		return;
+	}
+
+	GDir *dir = g_dir_open(com.wd, 0, NULL);
+	if (!dir) {
+		siril_message_dialog(GTK_MESSAGE_ERROR, _("Multi-Session Merge"),
+				_("Cannot open the current working directory."));
+		return;
+	}
+
+	GList *found_seqs = NULL;
+	const gchar *entry;
+	while ((entry = g_dir_read_name(dir)) != NULL) {
+		if (g_str_has_suffix(entry, ".seq")) {
+			gchar *basename = g_strndup(entry, strlen(entry) - 4);
+			found_seqs = g_list_append(found_seqs, basename);
+		}
+	}
+	g_dir_close(dir);
+
+	if (g_list_length(found_seqs) < 2) {
+		g_list_free_full(found_seqs, g_free);
+		siril_message_dialog(GTK_MESSAGE_INFO, _("Multi-Session Merge"),
+				_("At least two sequences (.seq) must exist in the working directory to merge multi-night sessions."));
+		return;
+	}
+
+	struct multisession_dialog_data *mdd = calloc(1, sizeof(struct multisession_dialog_data));
+
+	GtkWidget *win = gtk_window_new();
+	mdd->dialog = win;
+	gtk_window_set_title(GTK_WINDOW(win), _("Multi-Session Sequence Merge"));
+	gtk_window_set_modal(GTK_WINDOW(win), TRUE);
+	GtkWidget *control_window = lookup_widget("control_window");
+	if (control_window)
+		gtk_window_set_transient_for(GTK_WINDOW(win), GTK_WINDOW(control_window));
+	gtk_window_set_default_size(GTK_WINDOW(win), 460, 360);
+
+	GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+	gtk_widget_set_margin_start(vbox, 15);
+	gtk_widget_set_margin_end(vbox, 15);
+	gtk_widget_set_margin_top(vbox, 15);
+	gtk_widget_set_margin_bottom(vbox, 15);
+	gtk_window_set_child(GTK_WINDOW(win), vbox);
+
+	GtkWidget *lbl_info = gtk_label_new(_("Select sequences from each session/night to combine.\nRegistration and statistics are automatically preserved when a shared reference was used."));
+	gtk_label_set_wrap(GTK_LABEL(lbl_info), TRUE);
+	gtk_label_set_xalign(GTK_LABEL(lbl_info), 0.0);
+	gtk_box_append(GTK_BOX(vbox), lbl_info);
+
+	GtkWidget *scroll = gtk_scrolled_window_new();
+	gtk_widget_set_vexpand(scroll, TRUE);
+	gtk_scrolled_window_set_has_frame(GTK_SCROLLED_WINDOW(scroll), TRUE);
+
+	GtkWidget *vbox_list = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+	gtk_widget_set_margin_start(vbox_list, 10);
+	gtk_widget_set_margin_end(vbox_list, 10);
+	gtk_widget_set_margin_top(vbox_list, 10);
+	gtk_widget_set_margin_bottom(vbox_list, 10);
+	gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), vbox_list);
+	gtk_box_append(GTK_BOX(vbox), scroll);
+
+	for (GList *l = found_seqs; l != NULL; l = l->next) {
+		const char *sname = (const char *)l->data;
+		GtkWidget *cb = gtk_check_button_new_with_label(sname);
+		g_object_set_data_full(G_OBJECT(cb), "seqname", g_strdup(sname), g_free);
+		gtk_box_append(GTK_BOX(vbox_list), cb);
+		mdd->checkbuttons = g_list_append(mdd->checkbuttons, cb);
+	}
+	g_list_free_full(found_seqs, g_free);
+
+	GtkWidget *hbox_name = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+	GtkWidget *lbl_out = gtk_label_new(_("Combined sequence name:"));
+	mdd->entry_name = gtk_entry_new();
+	gtk_editable_set_text(GTK_EDITABLE(mdd->entry_name), "multisession_lights");
+	gtk_widget_set_hexpand(mdd->entry_name, TRUE);
+	gtk_box_append(GTK_BOX(hbox_name), lbl_out);
+	gtk_box_append(GTK_BOX(hbox_name), mdd->entry_name);
+	gtk_box_append(GTK_BOX(vbox), hbox_name);
+
+	GtkWidget *hbox_btns = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+	gtk_widget_set_halign(hbox_btns, GTK_ALIGN_END);
+	GtkWidget *btn_cancel = gtk_button_new_with_label(_("Cancel"));
+	GtkWidget *btn_merge = gtk_button_new_with_label(_("Merge & Load for Stacking"));
+	gtk_widget_add_css_class(btn_merge, "suggested-action");
+
+	g_signal_connect_swapped(btn_cancel, "clicked", G_CALLBACK(gtk_window_destroy), win);
+	g_signal_connect(btn_merge, "clicked", G_CALLBACK(on_multisession_merge_apply), mdd);
+	g_signal_connect(win, "destroy", G_CALLBACK(on_multisession_dialog_destroy), mdd);
+
+	gtk_box_append(GTK_BOX(hbox_btns), btn_cancel);
+	gtk_box_append(GTK_BOX(hbox_btns), btn_merge);
+	gtk_box_append(GTK_BOX(vbox), hbox_btns);
+
+	gtk_window_present(GTK_WINDOW(win));
 }

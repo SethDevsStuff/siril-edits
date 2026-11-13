@@ -78,6 +78,32 @@
             <property name="orientation">vertical</property>
             <property name="spacing">10</property>
             <child>
+              <object class="GtkBox" id="box_multisession">
+                <property name="orientation">horizontal</property>
+                <property name="spacing">6</property>
+                <property name="margin-top">2</property>
+                <property name="margin-bottom">2</property>
+                <child>
+                  <object class="GtkLabel">
+                    <property name="halign">start</property>
+                    <property name="hexpand">1</property>
+                    <property name="label" translatable="yes">Multi-Session:</property>
+                    <attributes>
+                      <attribute name="weight" value="bold"/>
+                    </attributes>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="btn_multisession">
+                    <property name="focusable">1</property>
+                    <property name="label" translatable="yes">Merge Sessions...</property>
+                    <property name="tooltip-text" translatable="yes">Merge multiple registered sequences (from different nights or calibration sessions) preserving registration data for unified stacking.</property>
+                    <signal name="clicked" handler="on_btn_multisession_clicked"/>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
               <object class="GtkExpander" id="stack_expander_method">
                 <property name="expanded">1</property>
                 <property name="focusable">1</property>

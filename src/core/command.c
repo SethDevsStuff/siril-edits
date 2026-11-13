@@ -4574,6 +4574,437 @@ int process_ls(int nb){
 	return CMD_OK;
 }
 
+static gboolean sequences_share_registration_frame(sequence **seqs, int nb_seq,
+		gboolean *is_ext_ref, char **ref_path, int *ref_rx, int *ref_ry, int *ref_img) {
+	if (nb_seq < 1) return FALSE;
+	*is_ext_ref = FALSE;
+	*ref_path = NULL;
+	*ref_rx = 0;
+	*ref_ry = 0;
+	*ref_img = -1;
+
+	// Check if all sequences have at least one layer with registration data
+	gboolean have_reg = FALSE;
+	for (int l = 0; l < seqs[0]->nb_layers; l++) {
+		gboolean all_have_layer = TRUE;
+		for (int i = 0; i < nb_seq; i++) {
+			if (!seqs[i]->regparam || !seqs[i]->regparam[l]) {
+				all_have_layer = FALSE;
+				break;
+			}
+		}
+		if (all_have_layer) {
+			have_reg = TRUE;
+			break;
+		}
+	}
+	if (!have_reg) return FALSE;
+
+	// Case 1: All sequences have ext_ref == TRUE
+	gboolean all_ext = TRUE;
+	for (int i = 0; i < nb_seq; i++) {
+		if (!seqs[i]->ext_ref || !seqs[i]->ext_ref_path) {
+			all_ext = FALSE;
+			break;
+		}
+	}
+	if (all_ext) {
+		gchar *base0 = g_path_get_basename(seqs[0]->ext_ref_path);
+		gboolean match = TRUE;
+		for (int i = 1; i < nb_seq; i++) {
+			gchar *basei = g_path_get_basename(seqs[i]->ext_ref_path);
+			if (g_strcmp0(base0, basei) != 0 && g_strcmp0(seqs[0]->ext_ref_path, seqs[i]->ext_ref_path) != 0) {
+				match = FALSE;
+			}
+			g_free(basei);
+			if (!match) break;
+		}
+		g_free(base0);
+		if (match) {
+			*is_ext_ref = TRUE;
+			*ref_path = g_strdup(seqs[0]->ext_ref_path);
+			*ref_rx = seqs[0]->ext_ref_rx;
+			*ref_ry = seqs[0]->ext_ref_ry;
+			return TRUE;
+		}
+	}
+
+	// Case 2: Sequence 0 has ext_ref == FALSE, and sequences 1..N have ext_ref == TRUE
+	// pointing to sequence 0's reference image
+	if (!seqs[0]->ext_ref && seqs[0]->reference_image >= 0) {
+		char ref_filename[512] = {0};
+		fit_sequence_get_image_filename_checkext(seqs[0], seqs[0]->reference_image, ref_filename);
+		gchar *base_ref = g_path_get_basename(ref_filename);
+		gboolean all_point_to_seq0 = TRUE;
+		for (int i = 1; i < nb_seq; i++) {
+			if (!seqs[i]->ext_ref || !seqs[i]->ext_ref_path) {
+				all_point_to_seq0 = FALSE;
+				break;
+			}
+			gchar *basei = g_path_get_basename(seqs[i]->ext_ref_path);
+			if (g_strcmp0(base_ref, basei) != 0 && !g_str_has_suffix(seqs[i]->ext_ref_path, base_ref)) {
+				all_point_to_seq0 = FALSE;
+			}
+			g_free(basei);
+			if (!all_point_to_seq0) break;
+		}
+		g_free(base_ref);
+		if (all_point_to_seq0) {
+			*is_ext_ref = FALSE;
+			*ref_img = seqs[0]->reference_image;
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
+static int write_merged_sequence_metadata(const char *destroot, sequence **seqs, int nb_seq, sequence_type type, int total_frames) {
+	if (nb_seq < 1 || total_frames < 1) return 1;
+
+	sequence outseq;
+	memset(&outseq, 0, sizeof(sequence));
+	initialize_sequence(&outseq, TRUE);
+
+	gchar *destroot_dup = strdup(destroot);
+	char *destroot_noext = remove_ext_from_filename(destroot_dup);
+	outseq.seqname = destroot_noext;
+	outseq.type = type;
+	outseq.number = total_frames;
+	outseq.fixed = 5;
+	outseq.beg = 1;
+	outseq.end = total_frames;
+	outseq.rx = seqs[0]->rx;
+	outseq.ry = seqs[0]->ry;
+	outseq.nb_layers = seqs[0]->nb_layers;
+	outseq.bitpix = seqs[0]->bitpix;
+	outseq.reference_image = 0;
+
+	int total_sel = 0;
+	outseq.imgparam = calloc(total_frames, sizeof(imgdata));
+	int dest_idx = 0;
+	for (int s = 0; s < nb_seq; s++) {
+		for (int j = 0; j < seqs[s]->number; j++) {
+			outseq.imgparam[dest_idx].filenum = dest_idx + 1;
+			outseq.imgparam[dest_idx].incl = (seqs[s]->imgparam) ? seqs[s]->imgparam[j].incl : 1;
+			outseq.imgparam[dest_idx].rx = (seqs[s]->imgparam && seqs[s]->imgparam[j].rx > 0) ? seqs[s]->imgparam[j].rx : seqs[s]->rx;
+			outseq.imgparam[dest_idx].ry = (seqs[s]->imgparam && seqs[s]->imgparam[j].ry > 0) ? seqs[s]->imgparam[j].ry : seqs[s]->ry;
+			outseq.imgparam[dest_idx].airmass = (seqs[s]->imgparam) ? seqs[s]->imgparam[j].airmass : 0.0;
+			if (seqs[s]->imgparam && seqs[s]->imgparam[j].date_obs) {
+				outseq.imgparam[dest_idx].date_obs = g_date_time_ref(seqs[s]->imgparam[j].date_obs);
+			}
+			if (outseq.imgparam[dest_idx].incl) total_sel++;
+			dest_idx++;
+		}
+	}
+	outseq.selnum = total_sel;
+
+	// Check registration
+	gboolean is_ext_ref = FALSE;
+	char *ref_path = NULL;
+	int ref_rx = 0, ref_ry = 0, ref_img_idx = 0;
+	gboolean can_merge_reg = sequences_share_registration_frame(seqs, nb_seq, &is_ext_ref, &ref_path, &ref_rx, &ref_ry, &ref_img_idx);
+
+	if (can_merge_reg) {
+		if (is_ext_ref) {
+			outseq.ext_ref = TRUE;
+			outseq.ext_ref_path = g_strdup(ref_path);
+			outseq.ext_ref_rx = ref_rx;
+			outseq.ext_ref_ry = ref_ry;
+			outseq.reference_image = 0;
+		} else {
+			outseq.ext_ref = FALSE;
+			outseq.reference_image = ref_img_idx;
+		}
+		g_free(ref_path);
+
+		outseq.regparam = calloc(outseq.nb_layers, sizeof(regdata *));
+		for (int l = 0; l < outseq.nb_layers; l++) {
+			gboolean layer_reg_ok = TRUE;
+			for (int s = 0; s < nb_seq; s++) {
+				if (!seqs[s]->regparam || !seqs[s]->regparam[l]) {
+					layer_reg_ok = FALSE;
+					break;
+				}
+			}
+			if (layer_reg_ok) {
+				outseq.regparam[l] = calloc(total_frames, sizeof(regdata));
+				dest_idx = 0;
+				for (int s = 0; s < nb_seq; s++) {
+					for (int j = 0; j < seqs[s]->number; j++) {
+						outseq.regparam[l][dest_idx] = seqs[s]->regparam[l][j];
+						outseq.regparam[l][dest_idx].fwhm_data = NULL;
+						dest_idx++;
+					}
+				}
+			}
+		}
+		siril_log_message(_("Preserved registration data across all %d sequences.\n"), nb_seq);
+	} else {
+		siril_log_info(_("Sequences do not share a common reference frame (use -extref when registering). Registration data was not merged.\n"));
+	}
+
+	// Check stats
+	outseq.stats = calloc(outseq.nb_layers, sizeof(imstats **));
+	for (int l = 0; l < outseq.nb_layers; l++) {
+		gboolean layer_stats_ok = TRUE;
+		for (int s = 0; s < nb_seq; s++) {
+			if (!seqs[s]->stats || !seqs[s]->stats[l]) {
+				layer_stats_ok = FALSE;
+				break;
+			}
+		}
+		if (layer_stats_ok) {
+			outseq.stats[l] = calloc(total_frames, sizeof(imstats *));
+			dest_idx = 0;
+			for (int s = 0; s < nb_seq; s++) {
+				for (int j = 0; j < seqs[s]->number; j++) {
+					if (seqs[s]->stats[l][j]) {
+						outseq.stats[l][dest_idx] = malloc(sizeof(imstats));
+						*outseq.stats[l][dest_idx] = *seqs[s]->stats[l][j];
+						outseq.stats[l][dest_idx]->_nb_refs = 1;
+					}
+					dest_idx++;
+				}
+			}
+		}
+	}
+
+	// Distortion parameters
+	if (seqs[0]->distoparam) {
+		outseq.distoparam = calloc(outseq.nb_layers, sizeof(disto_params));
+		for (int l = 0; l < outseq.nb_layers; l++) {
+			outseq.distoparam[l] = seqs[0]->distoparam[l];
+			if (seqs[0]->distoparam[l].filename)
+				outseq.distoparam[l].filename = g_strdup(seqs[0]->distoparam[l].filename);
+		}
+	}
+
+	// Drizzle
+	gboolean all_drizzle = TRUE;
+	for (int s = 0; s < nb_seq; s++) {
+		if (!seqs[s]->is_drizzle) {
+			all_drizzle = FALSE;
+			break;
+		}
+	}
+	if (all_drizzle) {
+		outseq.is_drizzle = TRUE;
+		gchar *drizz_dir = g_build_filename(com.wd, "drizztmp", NULL);
+		siril_mkdir_with_parents(drizz_dir, 0755);
+		g_free(drizz_dir);
+		dest_idx = 0;
+		for (int s = 0; s < nb_seq; s++) {
+			for (int j = 0; j < seqs[s]->number; j++) {
+				gchar *src_drizz = get_sequence_cache_filename(seqs[s], j, "drizztmp", "fit", NULL);
+				gchar *dst_drizz = get_sequence_cache_filename(&outseq, dest_idx, "drizztmp", "fit", NULL);
+				if (src_drizz && dst_drizz && g_file_test(src_drizz, G_FILE_TEST_EXISTS)) {
+					symlink_uniq_file(src_drizz, dst_drizz, TRUE);
+				}
+				g_free(src_drizz);
+				g_free(dst_drizz);
+				dest_idx++;
+			}
+		}
+		siril_log_message(_("Merged drizzle transformation cache.\n"));
+	}
+
+	// Write the .seq file
+	writeseqfile(&outseq);
+
+	free_sequence(&outseq, FALSE);
+	free(destroot_dup);
+	return 0;
+}
+
+struct merge_worker_data {
+	int nb_seq;
+	sequence **seqs;
+	char *destroot;
+	char *dest_dir;
+	sequence_type type;
+	GList *file_list;
+	struct timeval t_start;
+};
+
+static gboolean merge_complete_idle(gpointer p) {
+	char *seqname = (char *)p;
+	gui_iface.update_sequences_list(seqname);
+	g_free(seqname);
+	return G_SOURCE_REMOVE;
+}
+
+static gpointer merge_thread_worker(gpointer p) {
+	struct merge_worker_data *data = (struct merge_worker_data *)p;
+	int retval = 0;
+	int total = 0;
+	char *destroot_norm = normalize_seqname(data->destroot, data->type == SEQ_REGULAR);
+	siril_log_message(_("Starting sequence merge into `%s'...\n"), destroot_norm);
+
+	switch (data->type) {
+		case SEQ_REGULAR: {
+			total = g_list_length(data->file_list);
+			gchar *old_seq = g_strdup_printf("%s.seq", destroot_norm);
+			if (g_unlink(old_seq))
+				siril_log_debug("Error in g_unlink(%s)\n", old_seq);
+			g_free(old_seq);
+
+			GList *cur = data->file_list;
+			for (int k = 0; k < total; k++, cur = cur->next) {
+				if (!processing_should_continue()) {
+					retval = 1;
+					break;
+				}
+				gchar *dest_file = create_sequence_filename(SEQ_REGULAR, destroot_norm, k + 1);
+				if (symlink_uniq_file((char *)cur->data, dest_file, TRUE)) {
+					siril_log_error(_("Failed to link %s -> %s\n"), (char *)cur->data, dest_file);
+					g_free(dest_file);
+					retval = 1;
+					break;
+				}
+				g_free(dest_file);
+				if (k % 25 == 0 || k == total - 1) {
+					gui_iface.set_progress((float)(k + 1) / total, _("Merging sequences..."));
+				}
+			}
+			break;
+		}
+		case SEQ_SER: {
+			struct ser_struct out_ser;
+			gchar *outseq_name = g_str_has_suffix(destroot_norm, ".ser") ?
+				g_strdup(destroot_norm) : g_strdup_printf("%s.ser", destroot_norm);
+			if (ser_create_file(outseq_name, &out_ser, TRUE, data->seqs[0]->ser_file)) {
+				siril_log_error(_("Failed to create the output SER file `%s'\n"), outseq_name);
+				g_free(outseq_name);
+				retval = 1;
+				break;
+			}
+			g_free(outseq_name);
+			seqwriter_set_max_active_blocks(2);
+			int written_frames = 0;
+			for (int i = 0; i < data->nb_seq; i++) {
+				total += data->seqs[i]->number;
+			}
+			for (int i = 0; i < data->nb_seq; i++) {
+				for (unsigned int frame = 0; frame < data->seqs[i]->number; frame++) {
+					if (!processing_should_continue()) {
+						retval = 1;
+						break;
+					}
+					seqwriter_wait_for_memory(-1);
+					fits *fit = calloc(1, sizeof(fits));
+					if (ser_read_frame(data->seqs[i]->ser_file, frame, fit, FALSE, com.pref.debayer.open_debayer)) {
+						siril_log_error(_("Failed to read frame %d from input sequence `%d'\n"), frame, i + 1);
+						retval = 1;
+						seqwriter_release_memory();
+						ser_close_and_delete_file(&out_ser);
+						clearfits(fit);
+						free(fit);
+						break;
+					}
+					if (ser_write_frame_from_fit(&out_ser, fit, written_frames)) {
+						siril_log_error(_("Failed to write frame %d in merged sequence\n"), written_frames);
+						retval = 1;
+						seqwriter_release_memory();
+						ser_close_and_delete_file(&out_ser);
+						break;
+					}
+					written_frames++;
+					if (written_frames % 25 == 0 || written_frames == total) {
+						gui_iface.set_progress((float)written_frames / total, _("Merging sequences..."));
+					}
+				}
+				if (retval) break;
+			}
+			if (!retval && ser_write_and_close(&out_ser)) {
+				siril_log_error(_("Error while finalizing the merged sequence\n"));
+				retval = 1;
+			}
+			break;
+		}
+		case SEQ_FITSEQ: {
+			fitseq out_fitseq;
+			gchar *outseq_name = g_str_has_suffix(destroot_norm, com.pref.ext) ?
+				g_strdup(destroot_norm) : g_strdup_printf("%s%s", destroot_norm, com.pref.ext);
+			if (fitseq_create_file(outseq_name, &out_fitseq, -1)) {
+				siril_log_error(_("Failed to create the output FITSEQ file `%s'\n"), outseq_name);
+				g_free(outseq_name);
+				retval = 1;
+				break;
+			}
+			g_free(outseq_name);
+			seqwriter_set_max_active_blocks(2);
+			int written_frames = 0;
+			for (int i = 0; i < data->nb_seq; i++) {
+				total += data->seqs[i]->number;
+			}
+			for (int i = 0; i < data->nb_seq; i++) {
+				for (unsigned int frame = 0; frame < data->seqs[i]->number; frame++) {
+					if (!processing_should_continue()) {
+						retval = 1;
+						break;
+					}
+					seqwriter_wait_for_memory(-1);
+					fits *fit = calloc(1, sizeof(fits));
+					if (fitseq_read_frame(data->seqs[i]->fitseq_file, frame, fit, FALSE, -1)) {
+						siril_log_error(_("Failed to read frame %d from input sequence `%d'\n"), frame, i + 1);
+						retval = 1;
+						seqwriter_release_memory();
+						fitseq_close_and_delete_file(&out_fitseq);
+						clearfits(fit);
+						free(fit);
+						break;
+					}
+					if (fitseq_write_image(&out_fitseq, fit, written_frames)) {
+						siril_log_error(_("Failed to write frame %d in merged sequence\n"), written_frames);
+						retval = 1;
+						seqwriter_release_memory();
+						fitseq_close_and_delete_file(&out_fitseq);
+						break;
+					}
+					written_frames++;
+					if (written_frames % 25 == 0 || written_frames == total) {
+						gui_iface.set_progress((float)written_frames / total, _("Merging sequences..."));
+					}
+				}
+				if (retval) break;
+			}
+			if (!retval && fitseq_close_file(&out_fitseq)) {
+				siril_log_error(_("Error while finalizing the merged sequence\n"));
+				retval = 1;
+			}
+			break;
+		}
+		default:
+			siril_log_error(_("Unsupported sequence type for merge\n"));
+			retval = 1;
+			break;
+	}
+
+	if (!retval) {
+		write_merged_sequence_metadata(destroot_norm, data->seqs, data->nb_seq, data->type, total);
+		siril_add_idle(merge_complete_idle, g_strdup(destroot_norm));
+		siril_log_message(_("Merged %d sequences (%d total frames) successfully into '%s'.\n"), data->nb_seq, total, destroot_norm);
+	}
+
+	struct timeval t_end;
+	gettimeofday(&t_end, NULL);
+	show_time(data->t_start, t_end);
+
+	for (int i = 0; i < data->nb_seq; i++) {
+		if (data->seqs[i]) free_sequence(data->seqs[i], TRUE);
+	}
+	free(data->seqs);
+	g_list_free_full(data->file_list, g_free);
+	free(data->destroot);
+	free(data->dest_dir);
+	free(destroot_norm);
+	free(data);
+	gui_iface.set_progress(PROGRESS_DONE, NULL);
+	siril_add_idle(end_generic, NULL);
+	return GINT_TO_POINTER(retval);
+}
+
 int process_merge(int nb) {
 	int retval = 0, nb_seq = nb-2;
 	if (!com.wd) {
@@ -4586,7 +5017,6 @@ int process_merge(int nb) {
 		return CMD_ARG_ERROR;
 	}
 	char *dest_dir = strdup(com.wd);
-	char *outseq_name = NULL;
 	sequence **seqs = calloc(nb_seq, sizeof(sequence *));
 	GList *list = NULL;
 	for (int i = 0; i < nb_seq; i++) {
@@ -4639,116 +5069,20 @@ int process_merge(int nb) {
 		siril_change_dir(dest_dir, NULL);	// they're all relative to this one
 	}
 
-	struct ser_struct out_ser;
-	struct _convert_data *args = NULL;
-	fitseq out_fitseq;
-	char *destroot;
-	switch (seqs[0]->type) {
-		case SEQ_REGULAR:
-			// use the conversion, it makes symbolic links or copies as a fallback
-			destroot = strdup(word[nb - 1]);
-			args = calloc(1, sizeof(struct _convert_data));
-			args->start = 0;
-			args->total = 0; // init to get it from glist_to_array()
-			args->list = glist_to_array(list, &args->total);
-			args->destroot = destroot;
-			args->input_has_a_seq = FALSE;
-			args->input_has_a_film = FALSE;
-			args->debayer = FALSE;
-			args->multiple_output = FALSE;
-			args->output_type = SEQ_REGULAR;
-			args->make_link = TRUE;
-			gettimeofday(&(args->t_start), NULL);
-			if (!start_in_new_thread(convert_thread_worker, args)) {
-				free(args->destroot);
-				g_strfreev(args->list);
-				free(args);
-			}
-			break;
+	struct merge_worker_data *mdata = calloc(1, sizeof(struct merge_worker_data));
+	mdata->nb_seq = nb_seq;
+	mdata->seqs = seqs;
+	mdata->destroot = strdup(word[nb - 1]);
+	mdata->dest_dir = dest_dir;
+	mdata->type = seqs[0]->type;
+	mdata->file_list = list;
+	gettimeofday(&(mdata->t_start), NULL);
 
-		case SEQ_SER:
-			if (g_str_has_suffix(word[nb - 1], ".ser"))
-				outseq_name = g_strdup(word[nb - 1]);
-			else outseq_name = g_strdup_printf("%s.ser", word[nb - 1]);
-			if (ser_create_file(outseq_name, &out_ser, TRUE, seqs[0]->ser_file)) {
-				siril_log_error(_("Failed to create the output SER file `%s'\n"), word[nb - 1]);
-				retval = CMD_GENERIC_ERROR;
-				goto merge_clean_up;
-			}
-			seqwriter_set_max_active_blocks(2);
-			int written_frames = 0;
-			for (int i = 0; i < nb_seq; i++) {
-				for (unsigned int frame = 0; frame < seqs[i]->number; frame++) {
-					seqwriter_wait_for_memory(-1);
-					fits *fit = calloc(1, sizeof(fits));
-					if (ser_read_frame(seqs[i]->ser_file, frame, fit, FALSE, com.pref.debayer.open_debayer)) {
-						siril_log_error(_("Failed to read frame %d from input sequence `%s'\n"), frame, word[i + 1]);
-						retval = CMD_INVALID_IMAGE;
-						seqwriter_release_memory();
-						ser_close_and_delete_file(&out_ser);
-						goto merge_clean_up;
-					}
-
-					if (ser_write_frame_from_fit(&out_ser, fit, written_frames)) {
-						siril_log_error(_("Failed to write frame %d in merged sequence\n"), written_frames);
-						retval = CMD_GENERIC_ERROR;
-						seqwriter_release_memory();
-						ser_close_and_delete_file(&out_ser);
-						goto merge_clean_up;
-					}
-					written_frames++;
-				}
-			}
-			if (ser_write_and_close(&out_ser)) {
-				siril_log_error(_("Error while finalizing the merged sequence\n"));
-				retval = CMD_GENERIC_ERROR;
-			}
-			break;
-
-		case SEQ_FITSEQ:
-			if (g_str_has_suffix(word[nb - 1], com.pref.ext))
-				outseq_name = g_strdup(word[nb - 1]);
-			else outseq_name = g_strdup_printf("%s%s", word[nb - 1], com.pref.ext);
-			if (fitseq_create_file(outseq_name, &out_fitseq, -1)) {
-				siril_log_error(_("Failed to create the output SER file `%s'\n"), word[nb - 1]);
-				retval = CMD_GENERIC_ERROR;
-				goto merge_clean_up;
-			}
-			g_free(outseq_name);
-			outseq_name = NULL;
-			seqwriter_set_max_active_blocks(2);
-			written_frames = 0;
-			for (int i = 0; i < nb_seq; i++) {
-				for (unsigned int frame = 0; frame < seqs[i]->number; frame++) {
-					seqwriter_wait_for_memory(-1);
-					fits *fit = calloc(1, sizeof(fits));
-					if (fitseq_read_frame(seqs[i]->fitseq_file, frame, fit, FALSE, -1)) {
-						siril_log_error(_("Failed to read frame %d from input sequence `%s'\n"), frame, word[i + 1]);
-						retval = CMD_INVALID_IMAGE;
-						seqwriter_release_memory();
-						fitseq_close_and_delete_file(&out_fitseq);
-						goto merge_clean_up;
-					}
-
-					if (fitseq_write_image(&out_fitseq, fit, written_frames)) {
-						siril_log_error(_("Failed to write frame %d in merged sequence\n"), written_frames);
-						retval = CMD_GENERIC_ERROR;
-						seqwriter_release_memory();
-						fitseq_close_and_delete_file(&out_fitseq);
-						goto merge_clean_up;
-					}
-					written_frames++;
-				}
-			}
-			if (fitseq_close_file(&out_fitseq)) {
-				siril_log_error(_("Error while finalizing the merged sequence\n"));
-				retval = CMD_GENERIC_ERROR;
-			}
-			break;
-		default:
-			siril_log_error(_("This type of sequence cannot be created by Siril, aborting the merge\n"));
-			retval = CMD_GENERIC_ERROR;
+	if (!start_in_new_thread(merge_thread_worker, mdata)) {
+		retval = CMD_GENERIC_ERROR;
+		goto merge_clean_up;
 	}
+	return CMD_OK;
 
 merge_clean_up:
 	for (int i = 0; i < nb_seq; i++) {
@@ -4756,7 +5090,7 @@ merge_clean_up:
 			free_sequence(seqs[i], TRUE);
 	}
 	free(seqs);
-	g_free(outseq_name);
+	g_list_free_full(list, g_free);
 	siril_change_dir(dest_dir, NULL);
 	free(dest_dir);
 	return retval;
@@ -12213,17 +12547,18 @@ struct preprocessing_data *parse_calibrate_args(int nb, sequence *seq) {
 	/* checking for options */
 	for (int i = 2; i < nb; i++) {
 		if (g_str_has_prefix(word[i], "-bias=")) {
-			gchar *expression = g_shell_unquote(word[i] + 6, NULL);
-			if (expression && expression[0] == '=') {
+			gchar *unquoted = g_shell_unquote(word[i] + 6, NULL);
+			const char *val = unquoted ? unquoted : (word[i] + 6);
+			if (val && val[0] == '=') {
 				// parsing offset level
-				int offsetlevel = evaluateoffsetlevel(expression + 1, &reffit);
+				int offsetlevel = evaluateoffsetlevel(val + 1, &reffit);
 				if (!offsetlevel) {
-					siril_log_error(_("The offset value could not be parsed from expression: %s, aborting.\n"), expression +1);
+					siril_log_error(_("The offset value could not be parsed from expression: %s, aborting.\n"), val + 1);
 					retvalue = 1;
-					g_free(expression);
+					g_free(unquoted);
 					break;
 				} else {
-					g_free(expression);
+					g_free(unquoted);
 					siril_log_message(_("Synthetic offset: Level = %d\n"), offsetlevel);
 					int maxlevel = (bitpix == BYTE_IMG) ? UCHAR_MAX : USHRT_MAX;
 					if ((offsetlevel > maxlevel) || (offsetlevel < -maxlevel) ) {   // not excluding all neg values here to allow defining a pedestal
@@ -12237,10 +12572,9 @@ struct preprocessing_data *parse_calibrate_args(int nb, sequence *seq) {
 					}
 				}
 			} else {
-				g_free(expression);
-				expression = NULL;
 				int status;
-				expression = path_parse(&reffit, word[i] + 6, PATHPARSE_MODE_READ, &status);
+				gchar *expression = path_parse(&reffit, val, PATHPARSE_MODE_READ, &status);
+				g_free(unquoted);
 				if (status) {
 					g_free(expression);
 					retvalue = CMD_GENERIC_ERROR;
@@ -12264,7 +12598,10 @@ struct preprocessing_data *parse_calibrate_args(int nb, sequence *seq) {
 		} else if (g_str_has_prefix(word[i], "-dark=")) {
 			args->dark = calloc(1, sizeof(fits));
 			int status;
-			gchar *expression = path_parse(&reffit, word[i] + 6, PATHPARSE_MODE_READ, &status);
+			gchar *unquoted = g_shell_unquote(word[i] + 6, NULL);
+			const char *val = unquoted ? unquoted : (word[i] + 6);
+			gchar *expression = path_parse(&reffit, val, PATHPARSE_MODE_READ, &status);
+			g_free(unquoted);
 			if (status > 0) { // negative status are warnings
 				retvalue = CMD_GENERIC_ERROR;
 				g_free(expression);
@@ -12287,7 +12624,10 @@ struct preprocessing_data *parse_calibrate_args(int nb, sequence *seq) {
 		} else if (g_str_has_prefix(word[i], "-flat=")) {
 			args->flat = calloc(1, sizeof(fits));
 			int status;
-			gchar *expression = path_parse(&reffit, word[i] + 6, PATHPARSE_MODE_READ, &status);
+			gchar *unquoted = g_shell_unquote(word[i] + 6, NULL);
+			const char *val = unquoted ? unquoted : (word[i] + 6);
+			gchar *expression = path_parse(&reffit, val, PATHPARSE_MODE_READ, &status);
+			g_free(unquoted);
 			if (status) {
 				retvalue = CMD_GENERIC_ERROR;
 				free(args->flat);

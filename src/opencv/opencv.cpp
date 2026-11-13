@@ -477,7 +477,7 @@ unsigned char *cvCalculH(s_star *star_array_img,
 	return ret;
 }
 
-static void cvPrepareH(Mat H, double scale, int source_rx, int source_ry, int target_rx, int target_ry) {
+static void cvPrepareH(Mat &H, double scale, int source_rx, int source_ry, int target_rx, int target_ry) {
 	if (scale != 1.) {
 		Mat S = Mat::eye(3, 3, CV_64FC1);
 		S.at<double>(0,0) = scale;
