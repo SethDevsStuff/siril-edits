@@ -272,13 +272,13 @@ static command commands[] = {
 	{"split_cfa", 0, "split_cfa", process_split_cfa, STR_SPLIT_CFA, TRUE, REQ_CMD_SINGLE_IMAGE | REQ_CMD_FOR_CFA},
 	{"ssr", 0, "ssr", process_ssr, STR_SSR, TRUE, REQ_CMD_SINGLE_IMAGE | REQ_CMD_SEQUENCE},
 	{"stack", 1, "stack seqfilename\n"
-			"stack seqfilename { sum | min | max } [-output_norm] [-out=filename] [-maximize] [-upscale] [-32b]\n"
-			"stack seqfilename { med | median } [-nonorm, -norm=] [-fastnorm] [-rgb_equal] [-output_norm] [-out=filename] [-32b]\n"
-			"stack seqfilename { rej | mean } [rejection type] [sigma_low sigma_high]  [-rejmap[s]] [-nonorm, -norm=] [-fastnorm] [-overlap_norm] [-weight={noise|wfwhm|nbstars|nbstack|psfsw|psfsnr}] [-feather=] [-rgb_equal] [-output_norm] [-out=filename] [-maximize] [-upscale] [-32b]", process_stackone, STR_STACK, TRUE, REQ_CMD_NONE},
+			"stack seqfilename { sum | min | max } [-output_norm] [-out=filename] [-maximize] [-upscale] [-32b] [-split_nb={ha_oiii|sii_oiii}]\n"
+			"stack seqfilename { med | median } [-nonorm, -norm=] [-fastnorm] [-rgb_equal] [-output_norm] [-out=filename] [-32b] [-split_nb={ha_oiii|sii_oiii}]\n"
+			"stack seqfilename { rej | mean } [rejection type] [sigma_low sigma_high]  [-rejmap[s]] [-nonorm, -norm=] [-fastnorm] [-overlap_norm] [-weight={noise|wfwhm|nbstars|nbstack|psfsw|psfsnr}] [-feather=] [-rgb_equal] [-output_norm] [-out=filename] [-maximize] [-upscale] [-32b] [-split_nb={ha_oiii|sii_oiii}]", process_stackone, STR_STACK, TRUE, REQ_CMD_NONE},
 	{"stackall", 0, "stackall\n"
-			"stackall { sum | min | max } [-maximize] [-upscale] [-32b]\n"
-			"stackall { med | median } [-nonorm, norm=] [-32b]\n"
-			"stackall { rej | mean } [rejection type] [sigma_low sigma_high] [-nonorm, norm=] [-overlap_norm] [-weight={noise|wfwhm|nbstars|nbstack|psfsw|psfsnr}] [-feather=] [-rgb_equal] [-out=filename] [-maximize] [-upscale] [-32b]", process_stackall, STR_STACKALL, TRUE, REQ_CMD_NONE},
+			"stackall { sum | min | max } [-maximize] [-upscale] [-32b] [-split_nb={ha_oiii|sii_oiii}]\n"
+			"stackall { med | median } [-nonorm, norm=] [-32b] [-split_nb={ha_oiii|sii_oiii}]\n"
+			"stackall { rej | mean } [rejection type] [sigma_low sigma_high] [-nonorm, norm=] [-overlap_norm] [-weight={noise|wfwhm|nbstars|nbstack|psfsw|psfsnr}] [-feather=] [-rgb_equal] [-out=filename] [-maximize] [-upscale] [-32b] [-split_nb={ha_oiii|sii_oiii}]", process_stackall, STR_STACKALL, TRUE, REQ_CMD_NONE},
 	{"stack_mpp", 1, "stack_mpp seqname [-out=file] [-scale=N (1.0..3.0)] [-stack-percent=N] [-stack-frames=N] [-bg-fraction=F] [-bg-blend=F] [-skip-failed-aps] [-engine={patch|warp}] [-debayer={rcd|bilinear|vng|ahd|amaze|dcb|hphd|igv|lmmse}]", process_stack_mpp, STR_STACK_MPP, TRUE, REQ_CMD_NO_THREAD},
 #ifdef HAVE_LIBTIFF
 #endif

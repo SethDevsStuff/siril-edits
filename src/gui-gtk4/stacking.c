@@ -36,6 +36,10 @@
 
 static struct stacking_args stackparam = { 0 };
 
+static GtkWidget *box_split_narrowband = NULL;
+static GtkCheckButton *split_narrowband = NULL;
+static GtkDropDown *split_narrowband_type = NULL;
+
 static struct filtering_tuple stackfilters[MAX_FILTERS];
 /* Values for seq filtering for % or k value*/
 static float filter_initvals[] = {90., 3.}; // max %, max k
@@ -140,6 +144,9 @@ static void start_stacking() {
 		mpp_bg_fraction   = GTK_SPIN_BUTTON(gtk_builder_get_object(gui.builder, "spin_mpp_bg_fraction"));
 		mpp_bg_blend      = GTK_SPIN_BUTTON(gtk_builder_get_object(gui.builder, "spin_mpp_bg_blend"));
 		mpp_skip_failed   = GTK_CHECK_BUTTON(gtk_builder_get_object(gui.builder, "check_mpp_skip_failed"));
+		box_split_narrowband  = GTK_WIDGET(gtk_builder_get_object(gui.builder, "box_split_narrowband"));
+		split_narrowband      = GTK_CHECK_BUTTON(gtk_builder_get_object(gui.builder, "check_split_dual_narrowband"));
+		split_narrowband_type = GTK_DROP_DOWN(gtk_builder_get_object(gui.builder, "combo_split_narrowband_type"));
 	}
 
 	if (processing_is_job_active()) {
@@ -175,6 +182,14 @@ static void start_stacking() {
 		stackparam.weighting_type = weight_type;
 	}
 	stackparam.equalizeRGB = siril_toggle_get_active(GTK_WIDGET(RGB_equal)) && gtk_widget_is_visible(RGB_equal)  && (gtk_drop_down_get_selected(norm_combo) != NO_NORM);
+	gboolean do_split_nb = split_narrowband && siril_toggle_get_active(GTK_WIDGET(split_narrowband));
+	if (do_split_nb && com.seq.nb_layers == 3) {
+		guint sel = split_narrowband_type ? gtk_drop_down_get_selected(split_narrowband_type) : 0;
+		stackparam.split_narrowband = (sel == 1) ? SPLIT_NB_SII_OIII : SPLIT_NB_HA_OIII;
+		stackparam.equalizeRGB = FALSE;
+	} else {
+		stackparam.split_narrowband = SPLIT_NB_NONE;
+	}
 	stackparam.lite_norm = siril_toggle_get_active(GTK_WIDGET(fast_norm));
 	stackparam.feather_dist = (int)gtk_spin_button_get_value(feather_dist) * gtk_widget_get_visible(blend_frame);
 	stackparam.overlap_norm = siril_toggle_get_active(GTK_WIDGET(overlap_norm)) * gtk_widget_get_visible(blend_frame);
@@ -481,6 +496,26 @@ void on_check_maximize_framing_toggled(GtkCheckButton *button, gpointer user_dat
 	update_stack_interface(TRUE);
 }
 
+void on_check_split_dual_narrowband_toggled(GtkCheckButton *button, gpointer user_data) {
+	(void)user_data;
+	static GtkWidget *rgb_eq = NULL;
+	if (!split_narrowband_type)
+		split_narrowband_type = GTK_DROP_DOWN(gtk_builder_get_object(gui.builder, "combo_split_narrowband_type"));
+	if (!rgb_eq)
+		rgb_eq = GTK_WIDGET(gtk_builder_get_object(gui.builder, "check_RGBequal"));
+
+	gboolean active = siril_toggle_get_active(GTK_WIDGET(button));
+	if (split_narrowband_type) {
+		gtk_widget_set_sensitive(GTK_WIDGET(split_narrowband_type), active);
+	}
+	if (active && rgb_eq) {
+		siril_toggle_set_active(GTK_WIDGET(rgb_eq), FALSE);
+		gtk_widget_set_sensitive(rgb_eq, FALSE);
+	} else if (rgb_eq) {
+		gtk_widget_set_sensitive(rgb_eq, TRUE);
+	}
+}
+
 void on_stacksel_changed(GObject *obj, GParamSpec *pspec, gpointer user_data) {
 	GtkDropDown *widget = GTK_DROP_DOWN(obj);
 	(void)pspec;
@@ -767,6 +802,9 @@ void update_stack_interface(gboolean dont_change_stack_type) {
 		overlap_norm = GTK_WIDGET(gtk_builder_get_object(gui.builder, "check_norm_overlap"));
 		stack_expander_method = GTK_EXPANDER(gtk_builder_get_object(gui.builder, "stack_expander_method"));
 		stack_expander_output = GTK_EXPANDER(gtk_builder_get_object(gui.builder, "stack_expander_output"));
+		box_split_narrowband  = GTK_WIDGET(gtk_builder_get_object(gui.builder, "box_split_narrowband"));
+		split_narrowband      = GTK_CHECK_BUTTON(gtk_builder_get_object(gui.builder, "check_split_dual_narrowband"));
+		split_narrowband_type = GTK_DROP_DOWN(gtk_builder_get_object(gui.builder, "combo_split_narrowband_type"));
 	}
 	gboolean seqloaded = sequence_is_loaded();
 	gtk_widget_set_sensitive(GTK_WIDGET(stack_expander_method), seqloaded);
@@ -839,6 +877,18 @@ void update_stack_interface(gboolean dont_change_stack_type) {
 			gtk_widget_set_sensitive(max_framing, !must_reframe);
 			if (must_reframe)
 				siril_toggle_set_active(GTK_WIDGET(max_framing), TRUE);
+		}
+	}
+
+	gboolean is_rgb = (com.seq.nb_layers == 3);
+	if (box_split_narrowband) {
+		gtk_widget_set_visible(box_split_narrowband, is_rgb);
+		if (split_narrowband) {
+			gboolean nb_active = siril_toggle_get_active(GTK_WIDGET(split_narrowband));
+			if (split_narrowband_type)
+				gtk_widget_set_sensitive(GTK_WIDGET(split_narrowband_type), nb_active && is_rgb);
+			if (nb_active && is_rgb && RGB_equal)
+				gtk_widget_set_sensitive(RGB_equal, FALSE);
 		}
 	}
 

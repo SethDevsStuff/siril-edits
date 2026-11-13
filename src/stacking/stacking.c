@@ -22,7 +22,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "algos/extraction.h"
 #include "algos/noise.h"
+#include "algos/statistics.h"
 #include "core/arithm.h"
 #include "core/gui_iface.h"
 #include "core/icc_profile.h"
@@ -101,6 +103,216 @@ void main_stack(struct stacking_args *args) {
 	describe_stack_for_history(args, &args->result.history, FALSE, FALSE);
 }
 
+int save_dual_narrowband_split(fits *stacked_fit, const char *base_filename,
+                               dual_narrowband_mode mode, gboolean overwrite,
+                               struct stacking_args *args, fits *gfit_to_update) {
+	if (mode == SPLIT_NB_NONE || !stacked_fit)
+		return 0;
+
+	if (stacked_fit->naxes[2] != 3) {
+		siril_log_warning(_("Dual-narrowband split is only applicable to 3-channel (RGB) images. Skipping split.\n"));
+		return 0;
+	}
+
+	const char *red_name = (mode == SPLIT_NB_SII_OIII) ? "SII" : "Ha";
+	const char *teal_name = "OIII";
+
+	char red_ext[32], teal_ext[32];
+	snprintf(red_ext, sizeof(red_ext), "_%s%s", red_name, com.pref.ext);
+	snprintf(teal_ext, sizeof(teal_ext), "_%s%s", teal_name, com.pref.ext);
+	gchar *red_filename = replace_ext(base_filename, red_ext);
+	gchar *teal_filename = replace_ext(base_filename, teal_ext);
+	if (!red_filename || !teal_filename) {
+		g_free(red_filename);
+		g_free(teal_filename);
+		return -1;
+	}
+
+	/* 1. Extract Red channel (Ha or SII) */
+	fits f_red = { 0 };
+	if (extract_fits(stacked_fit, &f_red, RLAYER, FALSE)) {
+		siril_log_error(_("Failed to extract %s channel from stacking result.\n"), red_name);
+		g_free(red_filename);
+		g_free(teal_filename);
+		return -1;
+	}
+	copyfits(stacked_fit, &f_red, CP_METADATA_HEAP, -1);
+	update_filter_information(&f_red, (char *)red_name, FALSE);
+	f_red.history = g_slist_append(f_red.history,
+			g_strdup_printf(_("Split dual-narrowband: extracted %s from Red channel\n"), red_name));
+
+	/* 2. Synthesize Teal channel (OIII) from Green and Blue channels */
+	fits f_teal = { 0 };
+	if (extract_fits(stacked_fit, &f_teal, GLAYER, FALSE)) {
+		siril_log_error(_("Failed to create %s channel from stacking result.\n"), teal_name);
+		clearfits(&f_red);
+		g_free(red_filename);
+		g_free(teal_filename);
+		return -1;
+	}
+	copyfits(stacked_fit, &f_teal, CP_METADATA_HEAP, -1);
+	update_filter_information(&f_teal, (char *)teal_name, FALSE);
+	f_teal.history = g_slist_append(f_teal.history,
+			g_strdup(_("Split dual-narrowband: synthesized OIII from Green and Blue channels\n")));
+
+	/* Equalize Blue to Green using statistics if possible */
+	imstats *statg = statistics(NULL, -1, stacked_fit, GLAYER, NULL, STATS_LITENORM, com.max_thread);
+	imstats *statb = statistics(NULL, -1, stacked_fit, BLAYER, NULL, STATS_LITENORM, com.max_thread);
+	float scaleb = 1.0f;
+	float offsetb = 0.0f;
+	if (statg && statb && statb->mad > 0.0) {
+		scaleb = (float)(statg->mad / statb->mad);
+		offsetb = (float)(scaleb * statb->median - statg->median);
+	}
+	if (statg) free_stats(statg);
+	if (statb) free_stats(statb);
+
+	size_t n = (size_t)stacked_fit->rx * stacked_fit->ry;
+	if (stacked_fit->type == DATA_FLOAT) {
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(com.max_thread) schedule(static)
+#endif
+		for (size_t i = 0; i < n; i++) {
+			float g_val = stacked_fit->fpdata[GLAYER][i];
+			float b_val = stacked_fit->fpdata[BLAYER][i] * scaleb - offsetb;
+			f_teal.fdata[i] = 0.5f * (g_val + b_val);
+		}
+	} else {
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(com.max_thread) schedule(static)
+#endif
+		for (size_t i = 0; i < n; i++) {
+			float g_val = (float)stacked_fit->pdata[GLAYER][i];
+			float b_val = (float)stacked_fit->pdata[BLAYER][i] * scaleb - offsetb;
+			float val = 0.5f * (g_val + b_val);
+			f_teal.data[i] = roundf_to_WORD(val);
+		}
+	}
+
+	/* 3. Save both files */
+	int failed = 0;
+	if (g_file_test(red_filename, G_FILE_TEST_EXISTS)) {
+		if (overwrite) {
+			if (g_unlink(red_filename) == -1 || savefits(red_filename, &f_red))
+				failed = 1;
+		} else {
+			failed = 1;
+		}
+	} else {
+		if (savefits(red_filename, &f_red))
+			failed = 1;
+	}
+
+	if (g_file_test(teal_filename, G_FILE_TEST_EXISTS)) {
+		if (overwrite) {
+			if (g_unlink(teal_filename) == -1 || savefits(teal_filename, &f_teal))
+				failed = 1;
+		} else {
+			failed = 1;
+		}
+	} else {
+		if (savefits(teal_filename, &f_teal))
+			failed = 1;
+	}
+
+	if (!failed) {
+		siril_log_message(_("Dual-narrowband split outputs created successfully:\n  - %s: %s\n  - %s: %s\n"),
+				red_name, red_filename, teal_name, teal_filename);
+	} else {
+		siril_log_error(_("Could not save one or more dual-narrowband split results.\n"));
+	}
+
+	/* 4. Save rejection maps if requested */
+	if (args && args->create_rejmaps && args->rejmap_low) {
+		siril_log_message(_("Saving dual-narrowband rejection maps\n"));
+		soper_unscaled_div_ushort_to_float(args->rejmap_low, args->nb_images_to_stack);
+		if (!args->merge_lowhigh_rejmaps && args->rejmap_high) {
+			soper_unscaled_div_ushort_to_float(args->rejmap_high, args->nb_images_to_stack);
+		}
+
+		/* Red channel rejection map */
+		fits rej_red_low = { 0 };
+		if (!extract_fits(args->rejmap_low, &rej_red_low, RLAYER, FALSE)) {
+			char ext[64];
+			snprintf(ext, sizeof(ext), "_%s_%s%s", red_name,
+					args->merge_lowhigh_rejmaps ? "low+high_rejmap" : "low_rejmap", com.pref.ext);
+			gchar *fname = replace_ext(base_filename, ext);
+			describe_stack_for_history(args, &rej_red_low.history, TRUE, !args->merge_lowhigh_rejmaps);
+			savefits(fname, &rej_red_low);
+			g_free(fname);
+			clearfits(&rej_red_low);
+		}
+		if (!args->merge_lowhigh_rejmaps && args->rejmap_high) {
+			fits rej_red_high = { 0 };
+			if (!extract_fits(args->rejmap_high, &rej_red_high, RLAYER, FALSE)) {
+				char ext[64];
+				snprintf(ext, sizeof(ext), "_%s_high_rejmap%s", red_name, com.pref.ext);
+				gchar *fname = replace_ext(base_filename, ext);
+				describe_stack_for_history(args, &rej_red_high.history, TRUE, FALSE);
+				savefits(fname, &rej_red_high);
+				g_free(fname);
+				clearfits(&rej_red_high);
+			}
+		}
+
+		/* Teal (OIII) channel rejection map */
+		fits rej_teal_low = { 0 };
+		if (!extract_fits(args->rejmap_low, &rej_teal_low, GLAYER, FALSE)) {
+			size_t n_rej = (size_t)args->rejmap_low->rx * args->rejmap_low->ry;
+			if (args->rejmap_low->fpdata[GLAYER] && args->rejmap_low->fpdata[BLAYER]) {
+				for (size_t i = 0; i < n_rej; i++) {
+					rej_teal_low.fdata[i] = 0.5f * (args->rejmap_low->fpdata[GLAYER][i] + args->rejmap_low->fpdata[BLAYER][i]);
+				}
+			}
+			char ext[64];
+			snprintf(ext, sizeof(ext), "_OIII_%s%s",
+					args->merge_lowhigh_rejmaps ? "low+high_rejmap" : "low_rejmap", com.pref.ext);
+			gchar *fname = replace_ext(base_filename, ext);
+			describe_stack_for_history(args, &rej_teal_low.history, TRUE, !args->merge_lowhigh_rejmaps);
+			savefits(fname, &rej_teal_low);
+			g_free(fname);
+			clearfits(&rej_teal_low);
+		}
+		if (!args->merge_lowhigh_rejmaps && args->rejmap_high) {
+			fits rej_teal_high = { 0 };
+			if (!extract_fits(args->rejmap_high, &rej_teal_high, GLAYER, FALSE)) {
+				size_t n_rej = (size_t)args->rejmap_high->rx * args->rejmap_high->ry;
+				if (args->rejmap_high->fpdata[GLAYER] && args->rejmap_high->fpdata[BLAYER]) {
+					for (size_t i = 0; i < n_rej; i++) {
+						rej_teal_high.fdata[i] = 0.5f * (args->rejmap_high->fpdata[GLAYER][i] + args->rejmap_high->fpdata[BLAYER][i]);
+					}
+				}
+				char ext[64];
+				snprintf(ext, sizeof(ext), "_OIII_high_rejmap%s", com.pref.ext);
+				gchar *fname = replace_ext(base_filename, ext);
+				describe_stack_for_history(args, &rej_teal_high.history, TRUE, FALSE);
+				savefits(fname, &rej_teal_high);
+				g_free(fname);
+				clearfits(&rej_teal_high);
+			}
+		}
+	}
+
+	/* 5. Update gfit if requested */
+	if (gfit_to_update != NULL) {
+		clearfits(gfit_to_update);
+		memcpy(gfit_to_update, &f_red, offsetof(fits, rwlock));
+		memset(&f_red, 0, sizeof(fits));
+		if (com.uniq) {
+			g_free(com.uniq->filename);
+			com.uniq->filename = strdup(red_filename);
+			com.uniq->fileexist = !failed;
+			com.uniq->nb_layers = 1;
+		}
+	} else {
+		clearfits(&f_red);
+	}
+	clearfits(&f_teal);
+	g_free(red_filename);
+	g_free(teal_filename);
+	return failed ? -1 : 0;
+}
+
 /* the function that runs the thread. */
 gpointer stack_function_handler(gpointer p) {
 	struct stacking_args *args = (struct stacking_args *)p;
@@ -153,58 +365,71 @@ gpointer stack_function_handler(gpointer p) {
 		/* save stacking result */
 		if (args->output_parsed_filename != NULL && args->output_parsed_filename[0] != '\0') {
 			int failed = 0;
-			if (g_file_test(args->output_parsed_filename, G_FILE_TEST_EXISTS)) {
-				failed = !args->output_overwrite;
-				if (!failed) {
-					if (g_unlink(args->output_parsed_filename) == -1)
-						failed = 1;
-					if (!failed && savefits(args->output_parsed_filename, gfit))
-						failed = 1;
+			if (args->split_narrowband != SPLIT_NB_NONE && gfit->naxes[2] == 3) {
+				failed = save_dual_narrowband_split(gfit, args->output_parsed_filename,
+						args->split_narrowband, args->output_overwrite, args, gfit);
+				gfit->keywords.filename[0] = '\0';
+				if (failed) {
+					com.uniq->filename = strdup(_("Unsaved stacking result"));
+					com.uniq->fileexist = FALSE;
+				}
+			} else {
+				if (args->split_narrowband != SPLIT_NB_NONE) {
+					siril_log_warning(_("Dual-narrowband split is only applicable to 3-channel (RGB) images. Saving normal stacked image.\n"));
+				}
+				if (g_file_test(args->output_parsed_filename, G_FILE_TEST_EXISTS)) {
+					failed = !args->output_overwrite;
 					if (!failed) {
-						com.uniq->filename = strdup(args->output_parsed_filename);
-						com.uniq->fileexist = TRUE;
+						if (g_unlink(args->output_parsed_filename) == -1)
+							failed = 1;
+						if (!failed && savefits(args->output_parsed_filename, gfit))
+							failed = 1;
+						if (!failed) {
+							com.uniq->filename = strdup(args->output_parsed_filename);
+							com.uniq->fileexist = TRUE;
+						}
 					}
 				}
-			}
-			else {
-				// output folder (if any) was already created by update_header_and_parse
-				if (!savefits(args->output_parsed_filename, gfit)) {
-					com.uniq->filename = strdup(args->output_parsed_filename);
-					com.uniq->fileexist = TRUE;
-				} else {
-					failed = 1;
-				}
-			}
-			gfit->keywords.filename[0] = '\0'; // clear the reference to the original filename
-			if (failed) {
-				com.uniq->filename = strdup(_("Unsaved stacking result"));
-				com.uniq->fileexist = FALSE;
-			} else {
-				if (args->create_rejmaps) {
-					siril_log_message(_("Saving rejection maps\n"));
-					if (args->merge_lowhigh_rejmaps) {
-						char new_ext[30];
-						sprintf(new_ext, "_low+high_rejmap%s", com.pref.ext);
-						gchar *low_filename = replace_ext(args->output_parsed_filename, new_ext);
-						soper_unscaled_div_ushort_to_float(args->rejmap_low, args->nb_images_to_stack);
-						describe_stack_for_history(args, &args->rejmap_low->history, TRUE, FALSE);
-						savefits(low_filename, args->rejmap_low);
-						g_free(low_filename);
+				else {
+					// output folder (if any) was already created by update_header_and_parse
+					if (!savefits(args->output_parsed_filename, gfit)) {
+						com.uniq->filename = strdup(args->output_parsed_filename);
+						com.uniq->fileexist = TRUE;
 					} else {
-						char new_ext[30];
-						sprintf(new_ext, "_low_rejmap%s", com.pref.ext);
-						gchar *low_filename = replace_ext(args->output_parsed_filename, new_ext);
-						soper_unscaled_div_ushort_to_float(args->rejmap_low, args->nb_images_to_stack);
-						describe_stack_for_history(args, &args->rejmap_low->history, TRUE, TRUE);
-						savefits(low_filename, args->rejmap_low);
-						g_free(low_filename);
+						failed = 1;
+					}
+				}
+				gfit->keywords.filename[0] = '\0'; // clear the reference to the original filename
+				if (failed) {
+					com.uniq->filename = strdup(_("Unsaved stacking result"));
+					com.uniq->fileexist = FALSE;
+				} else {
+					if (args->create_rejmaps) {
+						siril_log_message(_("Saving rejection maps\n"));
+						if (args->merge_lowhigh_rejmaps) {
+							char new_ext[30];
+							sprintf(new_ext, "_low+high_rejmap%s", com.pref.ext);
+							gchar *low_filename = replace_ext(args->output_parsed_filename, new_ext);
+							soper_unscaled_div_ushort_to_float(args->rejmap_low, args->nb_images_to_stack);
+							describe_stack_for_history(args, &args->rejmap_low->history, TRUE, FALSE);
+							savefits(low_filename, args->rejmap_low);
+							g_free(low_filename);
+						} else {
+							char new_ext[30];
+							sprintf(new_ext, "_low_rejmap%s", com.pref.ext);
+							gchar *low_filename = replace_ext(args->output_parsed_filename, new_ext);
+							soper_unscaled_div_ushort_to_float(args->rejmap_low, args->nb_images_to_stack);
+							describe_stack_for_history(args, &args->rejmap_low->history, TRUE, TRUE);
+							savefits(low_filename, args->rejmap_low);
+							g_free(low_filename);
 
-						sprintf(new_ext, "_high_rejmap%s", com.pref.ext);
-						gchar *high_filename = replace_ext(args->output_parsed_filename, new_ext);
-						soper_unscaled_div_ushort_to_float(args->rejmap_high, args->nb_images_to_stack);
-						describe_stack_for_history(args, &args->rejmap_high->history, TRUE, FALSE);
-						savefits(high_filename, args->rejmap_high);
-						g_free(high_filename);
+							sprintf(new_ext, "_high_rejmap%s", com.pref.ext);
+							gchar *high_filename = replace_ext(args->output_parsed_filename, new_ext);
+							soper_unscaled_div_ushort_to_float(args->rejmap_high, args->nb_images_to_stack);
+							describe_stack_for_history(args, &args->rejmap_high->history, TRUE, FALSE);
+							savefits(high_filename, args->rejmap_high);
+							g_free(high_filename);
+						}
 					}
 				}
 			}
@@ -640,6 +865,7 @@ void init_stacking_args(struct stacking_args *args) {
 	memset(args->offset, 0, 2 * sizeof(int));
 	args->upscale_at_stacking = FALSE;
 	args->drizzle = FALSE;
+	args->split_narrowband = SPLIT_NB_NONE;
 
 	args->type_of_rejection = NO_REJEC;
 	memset(args->sig, 0, 2 * sizeof(float));

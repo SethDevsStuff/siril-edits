@@ -53,6 +53,12 @@ typedef enum {
 	PSFSNR_WEIGHT
 } weightingType;
 
+typedef enum {
+	SPLIT_NB_NONE = 0,
+	SPLIT_NB_HA_OIII,
+	SPLIT_NB_SII_OIII
+} dual_narrowband_mode;
+
 typedef struct {
 	double *offset;
 	double *mul;
@@ -91,6 +97,7 @@ struct stacking_args {
 	int offset[2];				/* offset used by max framing*/
 	gboolean upscale_at_stacking; /* x2 upscale during stacking*/
 	gboolean drizzle;		/* drizzle mode */
+	dual_narrowband_mode split_narrowband; /* split dual-narrowband filter exposures into 2 mono files */
 
 	rejection type_of_rejection;	/* type of rejection */
 	float sig[2];			/* low and high sigma rejection or GESTD parameters */
@@ -140,6 +147,7 @@ struct stacking_configuration {
 	gboolean maximize_framing;
 	gboolean upscale_at_stacking;
 	gboolean force32b;
+	dual_narrowband_mode split_narrowband;
 };
 
 typedef struct {
@@ -198,6 +206,9 @@ int find_refimage_in_indices(const int *indices, int nb, int ref);
 
 void _show_summary(struct stacking_args *args);
 void describe_stack_for_history(struct stacking_args *args, GSList **hist, gboolean for_rejmap, gboolean low_rejmap);
+int save_dual_narrowband_split(fits *stacked_fit, const char *base_filename,
+                               dual_narrowband_mode mode, gboolean overwrite,
+                               struct stacking_args *args, fits *gfit_to_update);
 
 	/* keeping metadata */
 void free_list_date(gpointer data);

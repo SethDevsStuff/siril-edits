@@ -1279,6 +1279,37 @@ WARNING: This option should not be checked for master stacking.</property>
                       </object>
                     </child>
                     <child>
+                      <object class="GtkBox" id="box_split_narrowband">
+                        <property name="spacing">10</property>
+                        <property name="valign">center</property>
+                        <property name="visible">0</property>
+                        <child>
+                          <object class="GtkCheckButton" id="check_split_dual_narrowband">
+                            <property name="focusable">1</property>
+                            <property name="halign">start</property>
+                            <property name="label" translatable="yes">Split dual-narrowband</property>
+                            <property name="tooltip-text" translatable="yes">Split dual-narrowband color exposures into two separate monochrome files (Ha/OIII or SII/OIII)</property>
+                            <signal name="toggled" handler="on_check_split_dual_narrowband_toggled"/>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkDropDown" id="combo_split_narrowband_type">
+                            <property name="focusable">1</property>
+                            <property name="sensitive">0</property>
+                            <property name="tooltip-text" translatable="yes">Select dual-narrowband filter bandpass combination: Ha / OIII or SII / OIII</property>
+                            <property name="model">
+                              <object class="GtkStringList">
+                                <items>
+                                  <item translatable="yes">Ha / OIII</item>
+                                  <item translatable="yes">SII / OIII</item>
+                                </items>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
                       <object class="GtkBox">
                         <property name="spacing">5</property>
                         <child>

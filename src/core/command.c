@@ -12013,6 +12013,16 @@ static int parse_stack_command_line(struct stacking_configuration *arg, int firs
 			arg->maximize_framing = TRUE;
 		} else if (!strcmp(current, "-upscale")) {
 			arg->upscale_at_stacking = TRUE;
+		} else if (g_str_has_prefix(current, "-split_nb=") || g_str_has_prefix(current, "-split_narrowband=")) {
+			value = strchr(current, '=') + 1;
+			if (!g_ascii_strcasecmp(value, "ha_oiii") || !g_ascii_strcasecmp(value, "haoiii") || !g_ascii_strcasecmp(value, "ha-oiii")) {
+				arg->split_narrowband = SPLIT_NB_HA_OIII;
+			} else if (!g_ascii_strcasecmp(value, "sii_oiii") || !g_ascii_strcasecmp(value, "siioiii") || !g_ascii_strcasecmp(value, "sii-oiii")) {
+				arg->split_narrowband = SPLIT_NB_SII_OIII;
+			} else {
+				siril_log_error(_("Invalid argument to %s, choose ha_oiii or sii_oiii.\n"), current);
+				return CMD_ARG_ERROR;
+			}
 		} else {
 			siril_log_error(_("Unexpected argument to stacking `%s', aborting.\n"), current);
 			return CMD_ARG_ERROR;
@@ -12061,7 +12071,8 @@ static int stack_one_seq(struct stacking_configuration *arg) {
 	else args.normalize = NO_NORM;
 	args.method = arg->method;
 	args.output_norm = arg->output_norm;
-	args.equalizeRGB = arg->equalizeRGB;
+	args.equalizeRGB = (arg->split_narrowband != SPLIT_NB_NONE) ? FALSE : arg->equalizeRGB;
+	args.split_narrowband = arg->split_narrowband;
 	args.lite_norm = arg->lite_norm;
 	args.reglayer = get_registration_layer(args.seq);
 	args.feather_dist = arg->feather_dist;
@@ -12178,37 +12189,49 @@ static int stack_one_seq(struct stacking_configuration *arg) {
 			retval = CMD_GENERIC_ERROR;
 		}
 		g_free(dirname);
-		if (savefits(arg->result_file, &args.result)) {
-			siril_log_error(_("Could not save the stacking result %s\n"), arg->result_file);
-			retval = CMD_GENERIC_ERROR;
-		}
-		else ++arg->number_of_loaded_sequences;
-
-		if (args.create_rejmaps) {
-			siril_log_message(_("Saving rejection maps\n"));
-			if (args.merge_lowhigh_rejmaps) {
-				char new_ext[30];
-				sprintf(new_ext, "_low+high_rejmap%s", com.pref.ext);
-				gchar *low_filename = replace_ext(arg->result_file, new_ext);
-				soper_unscaled_div_ushort_to_float(args.rejmap_low, args.nb_images_to_stack);
-				describe_stack_for_history(&args, &args.rejmap_low->history, TRUE, FALSE);
-				savefits(low_filename, args.rejmap_low);
-				g_free(low_filename);
+		if (args.split_narrowband != SPLIT_NB_NONE && args.result.naxes[2] == 3) {
+			if (save_dual_narrowband_split(&args.result, arg->result_file,
+					args.split_narrowband, TRUE, &args, NULL)) {
+				retval = CMD_GENERIC_ERROR;
 			} else {
-				char new_ext[30];
-				sprintf(new_ext, "_low_rejmap%s", com.pref.ext);
-				gchar *low_filename = replace_ext(arg->result_file, new_ext);
-				soper_unscaled_div_ushort_to_float(args.rejmap_low, args.nb_images_to_stack);
-				describe_stack_for_history(&args, &args.rejmap_low->history, TRUE, TRUE);
-				savefits(low_filename, args.rejmap_low);
-				g_free(low_filename);
+				++arg->number_of_loaded_sequences;
+			}
+		} else {
+			if (args.split_narrowband != SPLIT_NB_NONE) {
+				siril_log_warning(_("Dual-narrowband split is only applicable to 3-channel (RGB) images. Saving normal stacked image.\n"));
+			}
+			if (savefits(arg->result_file, &args.result)) {
+				siril_log_error(_("Could not save the stacking result %s\n"), arg->result_file);
+				retval = CMD_GENERIC_ERROR;
+			}
+			else ++arg->number_of_loaded_sequences;
 
-				sprintf(new_ext, "_high_rejmap%s", com.pref.ext);
-				gchar *high_filename = replace_ext(arg->result_file, new_ext);
-				soper_unscaled_div_ushort_to_float(args.rejmap_high, args.nb_images_to_stack);
-				describe_stack_for_history(&args, &args.rejmap_low->history, TRUE, FALSE);
-				savefits(high_filename, args.rejmap_high);
-				g_free(high_filename);
+			if (args.create_rejmaps) {
+				siril_log_message(_("Saving rejection maps\n"));
+				if (args.merge_lowhigh_rejmaps) {
+					char new_ext[30];
+					sprintf(new_ext, "_low+high_rejmap%s", com.pref.ext);
+					gchar *low_filename = replace_ext(arg->result_file, new_ext);
+					soper_unscaled_div_ushort_to_float(args.rejmap_low, args.nb_images_to_stack);
+					describe_stack_for_history(&args, &args.rejmap_low->history, TRUE, FALSE);
+					savefits(low_filename, args.rejmap_low);
+					g_free(low_filename);
+				} else {
+					char new_ext[30];
+					sprintf(new_ext, "_low_rejmap%s", com.pref.ext);
+					gchar *low_filename = replace_ext(arg->result_file, new_ext);
+					soper_unscaled_div_ushort_to_float(args.rejmap_low, args.nb_images_to_stack);
+					describe_stack_for_history(&args, &args.rejmap_low->history, TRUE, TRUE);
+					savefits(low_filename, args.rejmap_low);
+					g_free(low_filename);
+
+					sprintf(new_ext, "_high_rejmap%s", com.pref.ext);
+					gchar *high_filename = replace_ext(arg->result_file, new_ext);
+					soper_unscaled_div_ushort_to_float(args.rejmap_high, args.nb_images_to_stack);
+					describe_stack_for_history(&args, &args.rejmap_high->history, TRUE, FALSE);
+					savefits(high_filename, args.rejmap_high);
+					g_free(high_filename);
+				}
 			}
 		}
 
