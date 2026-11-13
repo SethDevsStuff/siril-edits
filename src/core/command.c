@@ -12721,15 +12721,19 @@ struct preprocessing_data *parse_calibrate_args(int nb, sequence *seq) {
 					siril_log_message(_("Cosmetic correction from masterdark: deactivated for hot pixels.\n"));
 			} else if (!strcmp(value, "bpm")) {
 				if (word[i + 1] && word[i + 1][0] != '\0') {
-					args->bad_pixel_map_file = g_file_new_for_path(word[i + 1]);
+					gchar *unquoted_bpm = g_shell_unquote(word[i + 1], NULL);
+					const char *bpm_path = unquoted_bpm ? unquoted_bpm : word[i + 1];
+					args->bad_pixel_map_file = g_file_new_for_path(bpm_path);
 					if (!check_for_cosme_file_sanity(args->bad_pixel_map_file)) {
 						//g_object_unref(args->bad_pixel_map_file); // This is unreferenced in check_for_cosme_file_sanity
 						args->bad_pixel_map_file = NULL;
-						siril_log_error(_("Could not open file %s, aborting.\n"), word[i + 1]);
+						siril_log_error(_("Could not open file %s, aborting.\n"), bpm_path);
+						g_free(unquoted_bpm);
 						retvalue = 1;
 						break;
 					} else {
-						siril_log_message(_("Cosmetic correction from Bad Pixel Map: %s.\n"), word[i + 1]);
+						siril_log_message(_("Cosmetic correction from Bad Pixel Map: %s.\n"), bpm_path);
+						g_free(unquoted_bpm);
 						i++;
 					}
 				} else {
