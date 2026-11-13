@@ -1,0 +1,364 @@
+--- Prompt 1 ---
+<USER_REQUEST>
+Give me a summary of the most important subsystems of this project
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:07:57-05:00.
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from None to Gemini 3.8 Flash (High). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>
+
+--- Prompt 2 ---
+<USER_REQUEST>
+I want to improve the current sequences and stacking workflow to better support multi-night sessions where it is possible that some lights will need different calibration frames applied from others. Tell me how this improvement could be implemented, based on the already existing stacking workflow.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:37:52-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 3 ---
+<USER_REQUEST>
+Just to confirm, this would update the gui stacking tab that appears on the right in siril, as well as be used in the preprocessing scripts?
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:44:52-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 4 ---
+<USER_REQUEST>
+Go ahead and make these changes, and double check that this won't break anything else
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:46:15-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 5 ---
+<USER_REQUEST>
+Right now, there seems to be a bug in the registration section of siril in general, where after registering images, the saved files are all black. Secondly, there is an issue with the merge menu, it successfully creates the new merged sequences, however siril crashes when you click the merge and load for stacking button. Additionally, I would like it to be that you can load all of your data in from multiple sessions at once and pick which "subsessions" they are a part of, assigning calibration frames to each. This is different from the current workflow of loading in a session, calibrating, then loading a second session, calibrating and then merging right before stacking
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T19:28:12-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 6 ---
+<USER_REQUEST>
+there is still an issue with registration outputting fully black images. also, when I try to run calibrate all sessions button, I get an error immediately saying error in line 2 ('calibrate'): invalid arguments.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T19:56:25-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 7 ---
+<USER_REQUEST>
+Can you make sure that there are options in the multi-session calibration menu so that you can enable / disable dark-optimization, cosmetic correction and many of the other advanced settings that can be seen in the standard calibration menu
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T21:01:14-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 8 ---
+<USER_REQUEST>
+you broke the registration again. you had fixed it but now it displays all black again. you also have an issue where whenever you click either cancel or calibrate all sessions in the multi session processing, siril crashes. this is the error (siril:78578): GLib-GIO-CRITICAL **: 21:12:26.699: g_list_model_get_n_items: assertion 'G_IS_LIST_MODEL (list)' failed
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T21:16:22-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 9 ---
+<USER_REQUEST>
+the registration problem still exists. this was fixed in the version that was most has a commit. check it out and see what change you have made since then that is causing the problem to persist
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T22:10:20-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 10 ---
+<USER_REQUEST>
+still broken, the file sizes this time are very small compared to before the changes made. looking at the logs I wonder if this is an issue? do_square max area: 0. (0, 0) to (0, 0). This looks like its only looking at one pixel
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T22:31:41-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 11 ---
+<USER_REQUEST>
+there is an error when going to calibrate Error in line 2 ('calibrate'): invalid input sequence
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T22:53:32-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 12 ---
+<USER_REQUEST>
+Give me a summary of the most important subsystems of this project
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:07:57-05:00.
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from None to Gemini 3.8 Flash (High). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>
+
+--- Prompt 13 ---
+<USER_REQUEST>
+I want to improve the current sequences and stacking workflow to better support multi-night sessions where it is possible that some lights will need different calibration frames applied from others. Tell me how this improvement could be implemented, based on the already existing stacking workflow.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:37:52-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 14 ---
+<USER_REQUEST>
+Just to confirm, this would update the gui stacking tab that appears on the right in siril, as well as be used in the preprocessing scripts?
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:44:52-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 15 ---
+<USER_REQUEST>
+Go ahead and make these changes, and double check that this won't break anything else
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:46:15-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 16 ---
+<USER_REQUEST>
+Right now, there seems to be a bug in the registration section of siril in general, where after registering images, the saved files are all black. Secondly, there is an issue with the merge menu, it successfully creates the new merged sequences, however siril crashes when you click the merge and load for stacking button. Additionally, I would like it to be that you can load all of your data in from multiple sessions at once and pick which "subsessions" they are a part of, assigning calibration frames to each. This is different from the current workflow of loading in a session, calibrating, then loading a second session, calibrating and then merging right before stacking
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T19:28:12-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 17 ---
+<USER_REQUEST>
+there is still an issue with registration outputting fully black images. also, when I try to run calibrate all sessions button, I get an error immediately saying error in line 2 ('calibrate'): invalid arguments.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T19:56:25-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 18 ---
+<USER_REQUEST>
+Can you make sure that there are options in the multi-session calibration menu so that you can enable / disable dark-optimization, cosmetic correction and many of the other advanced settings that can be seen in the standard calibration menu
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T21:01:14-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 19 ---
+<USER_REQUEST>
+you broke the registration again. you had fixed it but now it displays all black again. you also have an issue where whenever you click either cancel or calibrate all sessions in the multi session processing, siril crashes. this is the error (siril:78578): GLib-GIO-CRITICAL **: 21:12:26.699: g_list_model_get_n_items: assertion 'G_IS_LIST_MODEL (list)' failed
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T21:16:22-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 20 ---
+<USER_REQUEST>
+the registration problem still exists. this was fixed in the version that was most has a commit. check it out and see what change you have made since then that is causing the problem to persist
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T22:10:20-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 21 ---
+<USER_REQUEST>
+still broken, the file sizes this time are very small compared to before the changes made. looking at the logs I wonder if this is an issue? do_square max area: 0. (0, 0) to (0, 0). This looks like its only looking at one pixel
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T22:31:41-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 22 ---
+<USER_REQUEST>
+there is an error when going to calibrate Error in line 2 ('calibrate'): invalid input sequence
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T22:53:32-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 23 ---
+<USER_REQUEST>
+Give me a summary of the most important subsystems of this project
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:07:57-05:00.
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from None to Gemini 3.8 Flash (High). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>
+
+--- Prompt 24 ---
+<USER_REQUEST>
+I want to improve the current sequences and stacking workflow to better support multi-night sessions where it is possible that some lights will need different calibration frames applied from others. Tell me how this improvement could be implemented, based on the already existing stacking workflow.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:37:52-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 25 ---
+<USER_REQUEST>
+Just to confirm, this would update the gui stacking tab that appears on the right in siril, as well as be used in the preprocessing scripts?
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:44:52-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 26 ---
+<USER_REQUEST>
+Go ahead and make these changes, and double check that this won't break anything else
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:46:15-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 27 ---
+<USER_REQUEST>
+Right now, there seems to be a bug in the registration section of siril in general, where after registering images, the saved files are all black. Secondly, there is an issue with the merge menu, it successfully creates the new merged sequences, however siril crashes when you click the merge and load for stacking button. Additionally, I would like it to be that you can load all of your data in from multiple sessions at once and pick which "subsessions" they are a part of, assigning calibration frames to each. This is different from the current workflow of loading in a session, calibrating, then loading a second session, calibrating and then merging right before stacking
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T19:28:12-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 28 ---
+<USER_REQUEST>
+there is still an issue with registration outputting fully black images. also, when I try to run calibrate all sessions button, I get an error immediately saying error in line 2 ('calibrate'): invalid arguments.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T19:56:25-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 29 ---
+<USER_REQUEST>
+Can you make sure that there are options in the multi-session calibration menu so that you can enable / disable dark-optimization, cosmetic correction and many of the other advanced settings that can be seen in the standard calibration menu
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T21:01:14-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 30 ---
+<USER_REQUEST>
+you broke the registration again. you had fixed it but now it displays all black again. you also have an issue where whenever you click either cancel or calibrate all sessions in the multi session processing, siril crashes. this is the error (siril:78578): GLib-GIO-CRITICAL **: 21:12:26.699: g_list_model_get_n_items: assertion 'G_IS_LIST_MODEL (list)' failed
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T21:16:22-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 31 ---
+<USER_REQUEST>
+the registration problem still exists. this was fixed in the version that was most has a commit. check it out and see what change you have made since then that is causing the problem to persist
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T22:10:20-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 32 ---
+<USER_REQUEST>
+still broken, the file sizes this time are very small compared to before the changes made. looking at the logs I wonder if this is an issue? do_square max area: 0. (0, 0) to (0, 0). This looks like its only looking at one pixel
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T22:31:41-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 33 ---
+<USER_REQUEST>
+there is an error when going to calibrate Error in line 2 ('calibrate'): invalid input sequence
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T22:53:32-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 34 ---
+<USER_REQUEST>
+Give me a summary of the most important subsystems of this project
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:07:57-05:00.
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from None to Gemini 3.8 Flash (High). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>
+
+--- Prompt 35 ---
+<USER_REQUEST>
+I want to improve the current sequences and stacking workflow to better support multi-night sessions where it is possible that some lights will need different calibration frames applied from others. Tell me how this improvement could be implemented, based on the already existing stacking workflow.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:37:52-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 36 ---
+<USER_REQUEST>
+Just to confirm, this would update the gui stacking tab that appears on the right in siril, as well as be used in the preprocessing scripts?
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:44:52-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 37 ---
+<USER_REQUEST>
+Go ahead and make these changes, and double check that this won't break anything else
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T18:46:15-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 38 ---
+<USER_REQUEST>
+Right now, there seems to be a bug in the registration section of siril in general, where after registering images, the saved files are all black. Secondly, there is an issue with the merge menu, it successfully creates the new merged sequences, however siril crashes when you click the merge and load for stacking button. Additionally, I would like it to be that you can load all of your data in from multiple sessions at once and pick which "subsessions" they are a part of, assigning calibration frames to each. This is different from the current workflow of loading in a session, calibrating, then loading a second session, calibrating and then merging right before stacking
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T19:28:12-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 39 ---
+<USER_REQUEST>
+there is still an issue with registration outputting fully black images. also, when I try to run calibrate all sessions button, I get an error immediately saying error in line 2 ('calibrate'): invalid arguments.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T19:56:25-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 40 ---
+<USER_REQUEST>
+Can you make sure that there are options in the multi-session calibration menu so that you can enable / disable dark-optimization, cosmetic correction and many of the other advanced settings that can be seen in the standard calibration menu
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T21:01:14-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 41 ---
+<USER_REQUEST>
+you broke the registration again. you had fixed it but now it displays all black again. you also have an issue where whenever you click either cancel or calibrate all sessions in the multi session processing, siril crashes. this is the error (siril:78578): GLib-GIO-CRITICAL **: 21:12:26.699: g_list_model_get_n_items: assertion 'G_IS_LIST_MODEL (list)' failed
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T21:16:22-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 42 ---
+<USER_REQUEST>
+the registration problem still exists. this was fixed in the version that was most has a commit. check it out and see what change you have made since then that is causing the problem to persist
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T22:10:20-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 43 ---
+<USER_REQUEST>
+still broken, the file sizes this time are very small compared to before the changes made. looking at the logs I wonder if this is an issue? do_square max area: 0. (0, 0) to (0, 0). This looks like its only looking at one pixel
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T22:31:41-05:00.
+</ADDITIONAL_METADATA>
+
+--- Prompt 44 ---
+<USER_REQUEST>
+there is an error when going to calibrate Error in line 2 ('calibrate'): invalid input sequence
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-12T22:53:32-05:00.
+</ADDITIONAL_METADATA>
+
